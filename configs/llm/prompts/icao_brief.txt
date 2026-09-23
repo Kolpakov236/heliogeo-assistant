@@ -1,0 +1,42 @@
+Составь ICAO HANDOVER BRIEF на основе JSON.
+
+ФОРМАТ (строго):
+
+ISSUED: {{ issued_utc }}
+VALID UNTIL: {{ valid_until_utc }}
+
+SOLAR ACTIVITY:
+- Active regions: <перечисли noaa_num, location, magnetic_class>
+- Flares last 24h: <перечисли time, class, AR>
+- CME: <перечисли time, speed, earth_directed>
+
+ENERGETIC PARTICLES:
+- >2 MeV electrons: <e_2mev> pfu
+- >10 MeV protons (peak): <p_10mev_peak> pfu
+- SEP event: <yes/no>
+
+SOLAR WIND:
+- Speed: <speed_avg> km/s (min <speed_min>, max <speed_max>)
+- Density: <density> p/cc
+- Bt: <bt> nT, Bz: <bz_min> to <bz_max> nT
+- Source: <source>
+
+GEOSPACE:
+- Kp observed: <kp_observed>
+- Dst observed: <dst_observed> nT
+- Current level: <current_level>
+
+FORECAST:
+- Flare C/M/X: <flare_c_prob>% / <flare_m_prob>% / <flare_x_prob>%
+- Proton: <proton_prob>%
+- Geomagnetic: <geomagnetic_g or "none">
+- Drivers: <drivers>
+
+TECHNICAL ISSUES:
+<technical_issues or "None">
+
+ЯЗЫК: английский.
+СТИЛЬ: формальный, телеграфный, краткий.
+
+JSON:
+{{ payload_json }}

@@ -1,0 +1,33 @@
+workflow:
+  name: heliogeo-daily
+  schedule: "0 */6 * * *"
+  steps:
+    - id: build_payload
+      function: build-payload
+      input: {}
+
+    - id: generate_icao
+      function: generate-llm
+      input:
+        product: icao_brief
+        payload: ${build_payload.output}
+
+    - id: grounding_icao
+      function: grounding-check
+      input:
+        payload: ${build_payload.output}
+        text: ${generate_icao.output}
+
+    - id: render_pdf
+      function: render-pdf
+      input:
+        text: ${generate_icao.output}
+        format: pdf
+      condition: ${grounding_icao.output.ok}
+
+    - id: deliver
+      function: deliver-telegram
+      input:
+        text: ${generate_icao.output}
+        pdf: ${render_pdf.output}
+      condition: ${grounding_icao.output.ok}

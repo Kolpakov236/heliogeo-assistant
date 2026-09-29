@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     # Database
     database_url: str = Field(default="", alias="DATABASE_URL")
 
+    # SWX API
+    swx_base_url: str = Field(
+        default="https://503.ifz.ru/swx",
+        alias="SWX_BASE_URL",
+    )
     # App
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     tz: str = Field(default="UTC", alias="TZ")

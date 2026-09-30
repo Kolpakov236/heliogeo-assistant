@@ -29,6 +29,7 @@ ruff = "^0.4"
 mypy = "^1.9"
 types-pyyaml = "^6.0"
 pre-commit = "^4.6.2"
+types-reportlab = "^5.0.0.20260911"
 
 [tool.poetry.scripts]
 heliogeo = "heliogeo.cli.main:app"

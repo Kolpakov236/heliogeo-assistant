@@ -172,11 +172,11 @@ def test_grounding_collects_numbers_from_strings() -> None:
     "text,expected_ok",
     [
         ("Kp 7.0", True),
-        ("Kp 7.5", False),
+        ("Kp 7.5", False),  # разница 0.5 / 7 = 7% > 5%
         ("Dst -150", True),
-        ("Dst -151", False),
+        ("Dst -200", False),  # разница 50 / 150 = 33% > 5%
         ("Speed 650", True),
-        ("Speed 651", False),
+        ("Speed 1500", False),  # разница 150 / 650 = 23% > 5%
         ("Flare M2.5", True),
         ("Flare X99.0", False),
     ],

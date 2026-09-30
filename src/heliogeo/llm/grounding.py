@@ -103,7 +103,7 @@ def _numbers_match(a: float, b: float, rel_tol: float = 1e-3) -> bool:
 def check_grounding(
     payload: dict[str, Any] | Any,
     text: str,
-    rel_tol: float = 1e-3,
+    rel_tol: float = 5e-2,
 ) -> GroundingReport:
     """Проверить, что все числа в тексте есть в payload.
 

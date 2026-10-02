@@ -1,0 +1,30 @@
+# Локальная разработка: PostgreSQL для heliogeo-assistant.
+#
+# Запуск:  make up   (см. Makefile; --project-directory . — чтобы читался корневой .env)
+# Значения берутся из .env, без него действуют дефолты ниже (совпадают с .env.example).
+# Порт по умолчанию 5433 и привязка к 127.0.0.1: на 5432 часто уже стоит локальный
+# PostgreSQL, а БД с dev-паролем не должна быть видна из сети.
+name: heliogeo
+
+services:
+  postgres:
+    image: postgres:17
+    command: ["postgres", "-c", "timezone=UTC", "-c", "log_timezone=UTC"]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-heliogeo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-heliogeo}
+      POSTGRES_DB: ${POSTGRES_DB:-heliogeo}
+      TZ: UTC
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+volumes:
+  pgdata:

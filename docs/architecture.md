@@ -29,6 +29,7 @@ InfluxDB + Blobs + DAV → Extractors → Unified JSON → LLM → Products → 
 | Оркестрация | pipeline/ | build_payload, run_pipeline |
 | LLM | llm/ | Providers, prompts, grounding |
 | Продукты | products/ | ICAO, SWPC, simplified |
+| Хранилище | storage/ | Подключение к PostgreSQL, ORM-модели; миграции — migrations/ |
 | Рендер | render/ | TXT, PDF, HTML |
 | Доставка | delivery/ | Telegram, email, web |
 | CLI | cli/ | version, validate, generate |
@@ -55,6 +56,7 @@ InfluxDB + Blobs + DAV → Extractors → Unified JSON → LLM → Products → 
 ## Технологии
 
 Python 3.11+, Pydantic 2.x, Typer 0.12, influxdb-client 1.x, pytest 8.x, ruff 0.4, mypy strict.
+PostgreSQL 17 (docker compose для разработки), SQLAlchemy 2.x, Alembic, psycopg 3.
 
 ## Ограничения
 
@@ -73,10 +75,12 @@ Python 3.11+, Pydantic 2.x, Typer 0.12, influxdb-client 1.x, pytest 8.x, ruff 0.
 | LLM + grounding | ⏳ |
 | Render + delivery | ⏳ |
 | Планировщик | ⏳ |
+| Хранилище (PostgreSQL, миграции) | 🟡 |
 
 ## Ссылки
 
 - [JSON Schema](json_schema.md)
+- [База данных и миграции](database.md)
 - [Data Sources](data_sources.md)
 - [Prompts](prompts.md)
 - [Products](products.md)

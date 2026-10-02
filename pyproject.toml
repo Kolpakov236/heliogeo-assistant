@@ -21,6 +21,9 @@ tenacity = "^8.2"
 pyyaml = "^6.0"
 python-dotenv = "^1.0"
 click = "8.1.8"
+sqlalchemy = "^2.0"
+alembic = "^1.13"
+psycopg = {extras = ["binary"], version = "^3.2"}
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.1"
@@ -56,7 +59,8 @@ plugins = ["pydantic.mypy"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-addopts = "-v --cov=src/heliogeo --cov-report=term-missing"
+addopts = "-v -m 'not db' --cov=src/heliogeo --cov-report=term-missing"
+markers = ["db: тесты, которым нужен PostgreSQL (make up; запуск: make test-db)"]
 
 [tool.coverage.run]
 source = ["src/heliogeo"]

@@ -8,23 +8,24 @@
 - `heliogeo validate` — CLI-команда для проверки JSON по схеме.
 - Кастомные валидаторы: `valid_utc`, `valid_kp`, `valid_dst`, `valid_flare_class`.
 - PostgreSQL 17 в docker compose (`deploy/compose/`) и цели Makefile `up`, `down`, `migrate`,
-  `migrate-down`, `revision`, `test-db` (задача B0-04).
-- Alembic: `alembic.ini`, `migrations/`, базовая ревизия `0001` (B0-04).
-- `heliogeo.storage`: подключение к БД (`get_engine`, `ping`, `normalize_url`) и ORM-модели
-  (B0-04, B0-06).
-- Миграция `0002` и модели таблиц `forecast`, `forecast_verification`, `rolling_metrics` (B0-06).
+  `migrate-down`, `revision`, `test-db`.
+- Alembic: `alembic.ini`, `migrations/`, базовая ревизия `0001`.
+- `heliogeo.storage`: подключение к БД (`get_engine`, `ping`, `normalize_url`) и ORM-модели.
+- Миграция `0002` и модели таблиц `forecast`, `forecast_verification`, `rolling_metrics`
+  (прогнозы, их проверка по наблюдениям, скользящие метрики качества).
 - Тесты БД (маркер `db`, одноразовая база на тест-сессию) и моки строк прогнозов
   `tests/mocks/forecast.py`.
 - Документация: `docs/database.md`.
-- Контракты (B0-02): каталог `contracts/` (facts, lexicon, rules, homogenization), конверт
+- Контракты: каталог `contracts/` (facts, lexicon, rules, homogenization), конверт
   `version` / `approved_by` / `approved_at`, пакет `heliogeo.contracts` и валидатор
   `python -m heliogeo.contracts.validate` (`--strict` требует подпись эксперта).
 - `contracts/versions.lock.json` и команда `python -m heliogeo.contracts.lock`: содержимое
   контракта нельзя изменить, не повысив `version`.
-- Спецификации признаков `contracts/features/specs.yaml` (B3-01): 40 признаков с обязательной
-  задержкой доступности `available_delay` (задержки предварительные).
-- Миграция `0003` и модель `observation_daily` (часть B0-05, `feature_row` не создана); колонки
-  `sw_density_avg`, `sw_sector`, `cme_speed_max`, `cme_width_max`, `cme_earth_directed_speed_max`.
+- Спецификации признаков `contracts/features/specs.yaml`: 40 признаков с обязательной задержкой
+  доступности `available_delay` (задержки предварительные).
+- Миграция `0003` и модель `observation_daily` (суточные наблюдения; таблица признаков
+  `feature_row` пока не создана), в том числе колонки `sw_density_avg`, `sw_sector`,
+  `cme_speed_max`, `cme_width_max`, `cme_earth_directed_speed_max`.
 - Цели Makefile `contracts` и `contracts-lock`, настройка `CONTRACTS_DIR`.
 - Документация `docs/contracts.md`, тесты контрактов и моки `tests/mocks/contracts.py`,
   `tests/mocks/observation.py`.

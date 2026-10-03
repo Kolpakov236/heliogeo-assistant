@@ -29,7 +29,7 @@ InfluxDB + Blobs + DAV → Extractors → Unified JSON → LLM → Products → 
 | Оркестрация | pipeline/ | build_payload, run_pipeline |
 | LLM | llm/ | Providers, prompts, grounding |
 | Продукты | products/ | ICAO, SWPC, simplified |
-| Контракты | contracts/ (данные), heliogeo/contracts/ (код) | Версионируемые YAML под подписью эксперта: факты, лексикон, пороги, признаки |
+| Контракты | contracts/ (данные), heliogeo/contracts/ (код) | Версионируемые YAML под подписью эксперта: реестр фактов, словарь терминов, пороги, спецификации признаков |
 | Хранилище | storage/ | Подключение к PostgreSQL, ORM-модели; миграции — migrations/ |
 | Рендер | render/ | TXT, PDF, HTML |
 | Доставка | delivery/ | Telegram, email, web |

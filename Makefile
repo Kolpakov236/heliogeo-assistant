@@ -1,4 +1,4 @@
-.PHONY: install lint format test run clean up down migrate migrate-down revision test-db
+.PHONY: install lint format test run clean up down migrate migrate-down revision test-db contracts contracts-lock
 
 install:
 	poetry install
@@ -6,6 +6,7 @@ install:
 lint:
 	poetry run ruff check src tests
 	poetry run mypy src
+	poetry run python -m heliogeo.contracts.validate
 
 format:
 	poetry run ruff format src tests
@@ -46,3 +47,11 @@ endif
 # Тесты, которым нужна БД (нужен make up); обычный make test их пропускает
 test-db:
 	poetry run pytest -m db
+
+# --- Контракты (contracts/): проверка и обновление versions.lock.json ---
+contracts:
+	poetry run python -m heliogeo.contracts.validate
+
+# Запускать после повышения version у изменённого контракта
+contracts-lock:
+	poetry run python -m heliogeo.contracts.lock

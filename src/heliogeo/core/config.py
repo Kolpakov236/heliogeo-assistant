@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Self
 from urllib.parse import quote
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -56,9 +56,18 @@ class Settings(BaseSettings):
         default="https://503.ifz.ru/swx",
         alias="SWX_BASE_URL",
     )
+    # Контракты: доменные YAML под версионированием (по умолчанию contracts/ в корне репозитория)
+    contracts_dir: Path = Field(default=_PROJECT_ROOT / "contracts", alias="CONTRACTS_DIR")
+
     # App
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     tz: str = Field(default="UTC", alias="TZ")
+
+    @field_validator("contracts_dir")
+    @classmethod
+    def _resolve_contracts_dir(cls, value: Path) -> Path:
+        """Относительный путь считается от корня репозитория, а не от текущего каталога."""
+        return value if value.is_absolute() else _PROJECT_ROOT / value
 
     @model_validator(mode="after")
     def _build_database_url(self) -> Self:

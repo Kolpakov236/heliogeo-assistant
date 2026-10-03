@@ -92,6 +92,9 @@ ping()  # версия сервера; исключение, если БД не�
   `make_rolling_metrics` — правдоподобные строки таблиц, любое поле переопределяется:
   `make_forecast(source="swpc", horizon_days=2)`. Метрики верификации в них согласованы с
   распределением прогноза, но считаются упрощённо (эталонные метрики — задача B4-06).
+- Моки `tests/mocks/observation.py`: `make_observation_daily` (спокойные сутки 2026-09-01),
+  `make_storm_observation_daily` (буря 2024-05-11) и `make_empty_observation_daily` (сутки без
+  данных). Значения взяты из `fixtures/swx_snapshot_*.json`, и тест сверяет их с этими снимками.
 
 ## Модель данных: прогнозы и верификация (миграция 0002, B0-06)
 
@@ -158,10 +161,41 @@ PK `(computed_at, quantity, horizon_days, source, window_days)`; `horizon_days` 
   `G3+`), в примере §7 — пять (последний `G2+`). В моках используются шесть; окончательный
   словарь фиксируется вместе с моделью M1 (B4-10).
 
-### Для следующих миграций
+## Модель данных: суточные наблюдения (миграция 0003, часть B0-05)
 
-- `feature_row` и `observation_daily` (B0-05): отпечаток прибора (`fingerprint_key`, УСТ §2.3) в
-  ЭТАП1 §6 отсутствует, но нужен для метрик в разрезе эпох.
-- Представление `verbal_calibration` (B0-07): его ревизия идёт после `0002`; оно должно брать одну
-  оценку на прогноз (окончательную, иначе оперативную) и сравнивать уровни по порядковому номеру, а
-  не как строки (`'quiet' >= 'G1'` в SQL истинно).
+Из задачи B0-05 сделана только таблица `observation_daily` (модель `ObservationDailyRecord`, мок
+`tests/mocks/observation.py`); `feature_row` и отпечаток прибора в неё не входят (см. ниже).
+
+Одна строка — одни сутки (`d`, первичный ключ). **NULL значит «нет данных»**: отсутствие не
+подменяется нулём (РУК §2.2), поэтому всё, кроме даты, ключа сырья и времени загрузки, допускает
+NULL.
+
+| Группа | Колонки |
+|---|---|
+| Геомагнитная обстановка | `kp_max`, `kp_values` (до 8 трёхчасовых значений), `kp_source`, `dst_min`, `dst_source` |
+| Солнечный ветер | `sw_speed_min`, `sw_speed_avg`, `sw_speed_max`, `sw_bt`, `sw_bz_min`, `sw_density_avg`\*, `sw_sector`\*, `sw_source` |
+| Вспышки | `flare_max_class`, `flare_counts` (JSONB, `{"B": 5, "C": 3, "M": 0, "X": 0}`) |
+| Активные области | `ar_count`, `ar_total_area`, `ar_has_delta`, `ar_summary` (JSONB: классы McIntosh и рост `new`/`continuing`; структуру задаст B1-14) |
+| Корональные выбросы | `cme_count`, `cme_earth_directed`, `cme_direction_unknown`, `cme_speed_max`\*, `cme_width_max`\*, `cme_earth_directed_speed_max`\* |
+| Служебные | `qc` (JSONB), `raw_s3_key` (обязателен: сырьё сохраняется раньше разбора), `ingested_at` (по умолчанию `now()`) |
+
+\* — колонки, которых нет в ЭТАП1 §6. Они нужны признакам `sw_density_avg`, `sw_sector`,
+`cme_speed_max_24h`, `cme_width_max_24h` и `cme_earth_directed_speed_max_24h` из
+`contracts/features/specs.yaml` ([contracts.md](contracts.md)). Источники в ответе SWX API:
+`solar_wind.density.avg` (`latest` бывает пуст), `solar_wind.imf.sector` (`toward` или `away`),
+`speed` и `width` выбросов. `cme_earth_directed_speed_max` равна NULL, если выбросов к Земле не
+было.
+
+Ограничения (CHECK):
+- `kp_values` не длиннее 8: защита от «двойного Kp» (в `solar_wind.kp_obs` 24 значения, в
+  `geomag.kp_obs` — 8, РУК §2.4, ловушка 3);
+- счётчики не отрицательны, а `cme_earth_directed + cme_direction_unknown <= cme_count`;
+- `flare_counts`, `ar_summary` и `qc` — JSON-объекты.
+
+## Что осталось от B0-05 и соседних задач
+
+- B0-05: таблица `feature_row` и отпечаток прибора (`fingerprint_key`, УСТ §2.3) в `feature_row` и
+  `observation_daily`. В ЭТАП1 §6 его нет, но он нужен для метрик в разрезе эпох.
+- B0-07: представление `verbal_calibration` идёт после `0003`; оно должно брать одну оценку на
+  прогноз (окончательную, иначе оперативную) и сравнивать уровни по порядковому номеру, а не как
+  строки (`'quiet' >= 'G1'` в SQL истинно).

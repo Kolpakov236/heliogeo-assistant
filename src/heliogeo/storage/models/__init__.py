@@ -9,10 +9,12 @@ from heliogeo.storage.models.forecast import (
     ForecastVerificationRecord,
     RollingMetricsRecord,
 )
+from heliogeo.storage.models.observation import ObservationDailyRecord
 
 __all__ = [
     "Base",
     "ForecastRecord",
     "ForecastVerificationRecord",
+    "ObservationDailyRecord",
     "RollingMetricsRecord",
 ]

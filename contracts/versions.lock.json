@@ -1,0 +1,25 @@
+{
+  "files": {
+    "facts/registry.yaml": {
+      "sha256": "dd2c2794587e06d62d8ca1d6ee585494e9518d6f213a32e7d20369973ad97b7f",
+      "version": "0.0.0"
+    },
+    "features/specs.yaml": {
+      "sha256": "ba8f909f55b626160cfe9fe1396130c2f6a1c0653541c1cf8b4d82df084429b7",
+      "version": "0.1.0"
+    },
+    "homogenization/discontinuities.yaml": {
+      "sha256": "38ba43fd8523f48bd0b93b944b40e1b18df44fc20f90e16fa071242e60e6fd71",
+      "version": "0.0.0"
+    },
+    "lexicon/terms.yaml": {
+      "sha256": "a2f2a2a871fc6c22108aeb363ce5d0ff5ddc2e4dfe0d56f5f73f2c9df22316c0",
+      "version": "0.0.0"
+    },
+    "rules/thresholds.yaml": {
+      "sha256": "4f49f6b528259c56911e1be03ce42a0684ecdf715441080982a9339fa76d4d68",
+      "version": "0.0.0"
+    }
+  },
+  "format": 1
+}

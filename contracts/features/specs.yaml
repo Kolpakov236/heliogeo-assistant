@@ -1,0 +1,272 @@
+# Спецификации признаков для Feature Store (вид «features», задача B3-01).
+# Формат, правила и состав — docs/contracts.md.
+#
+# available_delay — через сколько после момента измерения значение становится известно
+# системе (ISO 8601: только дни и время, например PT3H, P1D, PT0S). Признак на момент t
+# считается по данным с меткой времени не позже t - available_delay; окна «за N суток»
+# заканчиваются в этот же момент.
+#
+# status: planned — признак объявлен, но Feature Store его ещё не считает; active — считает.
+# Любое изменение этого файла (состав, задержки, статусы) требует повышения version:
+# version — это feature_set_v, она записывается в строки признаков и прогнозов.
+#
+# Все задержки предварительные: файл не подписан, их подтвердит владелец SWX API
+# или предметный эксперт (см. note у каждого признака).
+version: "0.1.0"
+approved_by: null
+approved_at: null
+
+features:
+  # --- activity_history: история активности (Kp, Dst) ---
+  - id: kp_cur
+    group: activity_history
+    description: "Последнее известное трёхчасовое значение Kp на момент t - available_delay"
+    available_delay: PT3H
+    status: planned
+    note: "предварительно: трёхчасовые интервалы + публикация (ЭТАП1 §2.7)"
+  - id: kp_max_1d
+    group: activity_history
+    description: "Максимум трёхчасового Kp за 24 часа, оканчивающихся в t - available_delay"
+    available_delay: PT3H
+    status: planned
+    note: "предварительно: трёхчасовые интервалы + публикация (ЭТАП1 §2.7)"
+  - id: kp_mean_1d
+    group: activity_history
+    description: "Среднее трёхчасового Kp за 24 часа, оканчивающихся в t - available_delay"
+    available_delay: PT3H
+    status: planned
+    note: "предварительно: трёхчасовые интервалы + публикация (ЭТАП1 §2.7)"
+  - id: kp_max_3d
+    group: activity_history
+    description: "Максимум трёхчасового Kp за 3 суток, оканчивающихся в t - available_delay"
+    available_delay: PT3H
+    status: planned
+    note: "предварительно: трёхчасовые интервалы + публикация (ЭТАП1 §2.7)"
+  - id: kp_mean_3d
+    group: activity_history
+    description: "Среднее трёхчасового Kp за 3 суток, оканчивающихся в t - available_delay"
+    available_delay: PT3H
+    status: planned
+    note: "предварительно: трёхчасовые интервалы + публикация (ЭТАП1 §2.7)"
+  - id: kp_max_7d
+    group: activity_history
+    description: "Максимум трёхчасового Kp за 7 суток, оканчивающихся в t - available_delay"
+    available_delay: PT3H
+    status: planned
+    note: "предварительно: трёхчасовые интервалы + публикация (ЭТАП1 §2.7)"
+  - id: kp_mean_7d
+    group: activity_history
+    description: "Среднее трёхчасового Kp за 7 суток, оканчивающихся в t - available_delay"
+    available_delay: PT3H
+    status: planned
+    note: "предварительно: трёхчасовые интервалы + публикация (ЭТАП1 §2.7)"
+  - id: kp_trend_3d
+    group: activity_history
+    description: "Тренд Kp за 3 суток, оканчивающихся в t - available_delay"
+    available_delay: PT3H
+    status: planned
+    note: "предварительно: трёхчасовые интервалы + публикация (ЭТАП1 §2.7)"
+  - id: dst_min_1d
+    group: activity_history
+    description: "Минимум Dst за 24 часа, оканчивающихся в t - available_delay, нТл"
+    available_delay: PT3H
+    status: planned
+    note: "предварительно: консервативно, как у Kp; задержку оперативного Dst уточнить"
+
+  # --- recurrence: рекуррентность 27 суток ---
+  - id: kp_recurrence_27d
+    group: recurrence
+    description: "Максимум Kp в окне ±1 сутки вокруг момента t - 27,2753 суток (оборот Солнца)"
+    available_delay: PT3H
+    status: planned
+    note: "предварительно: ряд Kp, значения старше 23 суток; задержка как у Kp"
+  - id: kp_recurrence_54d
+    group: recurrence
+    description: "Максимум Kp в окне ±1 сутки вокруг момента t - 54,55 суток (два оборота Солнца)"
+    available_delay: PT3H
+    status: planned
+    note: "предварительно: ряд Kp, значения старше 50 суток; задержка как у Kp"
+
+  # --- solar_wind: солнечный ветер ---
+  - id: sw_speed_min
+    group: solar_wind
+    description: "Минимальная скорость солнечного ветра за 24 часа, км/с"
+    available_delay: PT1H
+    status: planned
+    note: "предварительно: измерения в точке L1 в реальном времени (ЭТАП1 §2.7)"
+  - id: sw_speed_avg
+    group: solar_wind
+    description: "Средняя скорость солнечного ветра за 24 часа, км/с"
+    available_delay: PT1H
+    status: planned
+    note: "предварительно: измерения в точке L1 в реальном времени (ЭТАП1 §2.7)"
+  - id: sw_speed_max
+    group: solar_wind
+    description: "Максимальная скорость солнечного ветра за 24 часа, км/с"
+    available_delay: PT1H
+    status: planned
+    note: "предварительно: измерения в точке L1 в реальном времени (ЭТАП1 §2.7)"
+  - id: sw_density_avg
+    group: solar_wind
+    description: "Средняя плотность солнечного ветра за 24 часа, частиц/см³"
+    available_delay: PT1H
+    status: planned
+    note: "предварительно: измерения в точке L1 в реальном времени (ЭТАП1 §2.7)"
+  - id: sw_bt
+    group: solar_wind
+    description: "Полная индукция межпланетного магнитного поля (Bt) за 24 часа, нТл"
+    available_delay: PT1H
+    status: planned
+    note: "предварительно: измерения в точке L1 в реальном времени (ЭТАП1 §2.7)"
+  - id: sw_bz_min
+    group: solar_wind
+    description: "Минимум Bz межпланетного магнитного поля за 24 часа, нТл"
+    available_delay: PT1H
+    status: planned
+    note: "предварительно: измерения в точке L1 в реальном времени (ЭТАП1 §2.7)"
+  - id: sw_sector
+    group: solar_wind
+    description: "Сектор межпланетного магнитного поля за 24 часа: toward или away"
+    available_delay: PT1H
+    status: planned
+    note: "предварительно: измерения в точке L1 в реальном времени (ЭТАП1 §2.7)"
+  - id: sw_speed_trend_24h
+    group: solar_wind
+    description: "Изменение средней скорости солнечного ветра относительно предыдущих суток, км/с"
+    available_delay: PT1H
+    status: planned
+    note: "предварительно: измерения в точке L1 в реальном времени (ЭТАП1 §2.7)"
+
+  # --- solar_activity: активные области и вспышки ---
+  - id: ar_count
+    group: solar_activity
+    description: "Число активных областей на диске"
+    available_delay: PT1H
+    status: planned
+    note: "предварительно: задержка публикации данных по областям не подтверждена владельцем API, взято с запасом"
+  - id: ar_total_area
+    group: solar_activity
+    description: "Суммарная площадь активных областей, миллионные доли полусферы"
+    available_delay: PT1H
+    status: planned
+    note: "предварительно: задержка публикации данных по областям не подтверждена владельцем API, взято с запасом"
+  - id: ar_has_delta
+    group: solar_activity
+    description: "Есть ли на диске область с дельта-конфигурацией магнитного поля"
+    available_delay: PT1H
+    status: planned
+    note: "предварительно: задержка публикации данных по областям не подтверждена владельцем API, взято с запасом"
+  - id: ar_max_mcintosh_z
+    group: solar_activity
+    description: "Наибольший класс Z по классификации McIntosh среди областей диска (A, B, C, D, E, F, H)"
+    available_delay: PT1H
+    status: planned
+    note: "предварительно: задержка публикации данных по областям не подтверждена владельцем API, взято с запасом"
+  - id: ar_new_count
+    group: solar_activity
+    description: "Число новых активных областей (впервые получивших номер) за сутки"
+    available_delay: PT1H
+    status: planned
+    note: "предварительно: задержка публикации данных по областям не подтверждена владельцем API, взято с запасом"
+  - id: flares_c_24h
+    group: solar_activity
+    description: "Число вспышек класса C за 24 часа"
+    available_delay: PT1H
+    status: planned
+    note: "предварительно: каталог вспышек отстаёт на минуты, не подтверждено владельцем API, взято с запасом"
+  - id: flares_m_24h
+    group: solar_activity
+    description: "Число вспышек класса M за 24 часа"
+    available_delay: PT1H
+    status: planned
+    note: "предварительно: каталог вспышек отстаёт на минуты, не подтверждено владельцем API, взято с запасом"
+  - id: flares_x_24h
+    group: solar_activity
+    description: "Число вспышек класса X за 24 часа"
+    available_delay: PT1H
+    status: planned
+    note: "предварительно: каталог вспышек отстаёт на минуты, не подтверждено владельцем API, взято с запасом"
+  - id: flare_max_flux_24h
+    group: solar_activity
+    description: "Максимальный рентгеновский поток вспышек за 24 часа, Вт/м²"
+    available_delay: PT1H
+    status: planned
+    note: "предварительно: каталог вспышек отстаёт на минуты, не подтверждено владельцем API, взято с запасом"
+  - id: days_since_last_m
+    group: solar_activity
+    description: "Число суток с последней вспышки класса M или сильнее"
+    available_delay: PT1H
+    status: planned
+    note: "предварительно: каталог вспышек отстаёт на минуты, не подтверждено владельцем API, взято с запасом"
+  - id: days_since_last_x
+    group: solar_activity
+    description: "Число суток с последней вспышки класса X"
+    available_delay: PT1H
+    status: planned
+    note: "предварительно: каталог вспышек отстаёт на минуты, не подтверждено владельцем API, взято с запасом"
+
+  # --- cme: корональные выбросы массы ---
+  - id: cme_count_24h
+    group: cme
+    description: "Число корональных выбросов массы за 24 часа"
+    available_delay: P1D
+    status: planned
+    note: "предварительно: каталог выбросов отстаёт (ЭТАП1 §2.7)"
+  - id: cme_earth_directed
+    group: cme
+    description: "Число выбросов, направленных к Земле, за 24 часа"
+    available_delay: P1D
+    status: planned
+    note: "предварительно: каталог выбросов отстаёт (ЭТАП1 §2.7)"
+  - id: cme_direction_unknown
+    group: cme
+    description: "Число выбросов с неопределённым направлением (earth_directed не известно) за 24 часа"
+    available_delay: P1D
+    status: planned
+    note: "предварительно: каталог выбросов отстаёт (ЭТАП1 §2.7)"
+  - id: cme_speed_max_24h
+    group: cme
+    description: "Максимальная скорость выбросов за 24 часа, км/с"
+    available_delay: P1D
+    status: planned
+    note: "предварительно: каталог выбросов отстаёт (ЭТАП1 §2.7)"
+  - id: cme_width_max_24h
+    group: cme
+    description: "Максимальная угловая ширина выбросов за 24 часа, градусы"
+    available_delay: P1D
+    status: planned
+    note: "предварительно: каталог выбросов отстаёт (ЭТАП1 §2.7)"
+  - id: cme_earth_directed_speed_max_24h
+    group: cme
+    description: "Максимальная скорость выбросов, направленных к Земле, за 24 часа, км/с"
+    available_delay: P1D
+    status: planned
+    note: "предварительно: каталог выбросов отстаёт (ЭТАП1 §2.7)"
+
+  # --- calendar: календарь и фаза цикла ---
+  - id: doy
+    group: calendar
+    description: "День года (1-366): сезонность"
+    available_delay: PT0S
+    status: planned
+    note: "известно заранее"
+  - id: cycle_proxy
+    group: calendar
+    description: "Косвенная оценка фазы солнечного цикла (0-1) по числу и площади активных областей"
+    available_delay: PT1H
+    status: planned
+    note: "предварительно: производная от данных по активным областям, задержка как у них"
+
+  # --- external_forecast: чужой прогноз SWPC (в автономную модель не входит) ---
+  - id: swpc_g_scale
+    group: external_forecast
+    description: "Уровень G (0-5) из последнего прогноза SWPC, выпущенного не позже t"
+    available_delay: PT0S
+    status: planned
+    note: "предварительно: приходит в составе прогноза на тот же момент (ЭТАП1 §2.7)"
+  - id: swpc_r_scale
+    group: external_forecast
+    description: "Уровень R (0-5) из последнего прогноза SWPC, выпущенного не позже t"
+    available_delay: PT0S
+    status: planned
+    note: "предварительно: приходит в составе прогноза на тот же момент (ЭТАП1 §2.7)"

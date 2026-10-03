@@ -17,6 +17,16 @@
 
 Значения по умолчанию из `.env.example` подходят для локальной БД. Подробнее: docs/database.md.
 
+## Контракты
+
+Доменные данные, которые подписывает эксперт (факты, лексикон, пороги, признаки), лежат в
+`contracts/` и версионируются:
+
+    make contracts        # проверить контракты (входит и в make lint)
+    make contracts-lock   # обновить versions.lock.json после повышения version
+
+Подробнее: docs/contracts.md.
+
 ## Структура
 
 См. docs/architecture.md.

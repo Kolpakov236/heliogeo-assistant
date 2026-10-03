@@ -98,13 +98,20 @@ def _empty_payload() -> dict[str, Any]:
     }
 
 
-def build_payload_safe() -> tuple[dict[str, Any] | None, str | None]:
+def build_payload_safe(
+    query_time: datetime | None = None,
+    no_live: bool = False,
+) -> tuple[dict[str, Any] | None, str | None]:
     """Собрать payload. Возвращает (payload, error).
 
     Обёртка над `pipeline.builder.build_payload`, которая не бросает.
+
+    Args:
+        query_time: момент UTC с часовым поясом. None → «сейчас».
+        no_live: не подмешивать live-данные SWPC (для воспроизводимых прогонов по архиву).
     """
     try:
-        payload = build_payload()
+        payload = build_payload(query_time=query_time, no_live=no_live)
         if hasattr(payload, "model_dump"):
             return payload.model_dump(mode="json"), None
         if isinstance(payload, dict):
@@ -134,6 +141,8 @@ def run_pipeline(
     *,
     fail_on_grounding: bool = False,
     deliver: bool = False,
+    query_time: datetime | None = None,
+    no_live: bool = False,
 ) -> PipelineResult:
     """Прогнать пайплайн: build → generate → grounding → (render → deliver).
 
@@ -142,6 +151,8 @@ def run_pipeline(
         provider: провайдер LLM. По умолчанию — из Settings.
         fail_on_grounding: если True — бросать LLMError при провале grounding.
         deliver: если True — вызвать delivery (пока заглушка).
+        query_time: момент данных UTC с часовым поясом. None → «сейчас».
+        no_live: не подмешивать live-данные SWPC (для воспроизводимых прогонов по архиву).
 
     Returns:
         PipelineResult с шагами и продуктами.
@@ -153,7 +164,7 @@ def run_pipeline(
 
     # --- Шаг 1: build payload ---
     t0 = time.monotonic()
-    payload, error = build_payload_safe()
+    payload, error = build_payload_safe(query_time=query_time, no_live=no_live)
     duration = int((time.monotonic() - t0) * 1000)
 
     if error or payload is None:

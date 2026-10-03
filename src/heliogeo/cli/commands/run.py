@@ -1,6 +1,7 @@
 """CLI-команда run: полный pipeline."""
 
-from datetime import UTC, datetime
+import re
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import typer
@@ -14,6 +15,12 @@ from heliogeo.products.base import Product, ProductMetadata
 from heliogeo.render import render_product
 
 logger = get_logger(__name__)
+
+# YYYY-MM-DD или YYYY-MM-DDTHH:MM[:SS] с необязательным Z или смещением.
+_DATE_ARGUMENT = re.compile(r"\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?(Z|[+-]\d{2}:\d{2})?)?")
+_DATE_ONLY = re.compile(r"\d{4}-\d{2}-\d{2}")
+# Ближе этого срока к «сейчас» источник подмешивает live-данные SWPC.
+_LIVE_MIXING_WINDOW = timedelta(days=2)
 
 
 def run(
@@ -51,11 +58,35 @@ def run(
         "--fail-on-grounding",
         help="Прервать pipeline при провале grounding",
     ),
+    date: str | None = typer.Option(
+        None,
+        "--date",
+        help=(
+            "Момент данных, UTC: YYYY-MM-DD (12:00 UTC, как в API) или YYYY-MM-DDTHH:MM. "
+            "По умолчанию — сейчас."
+        ),
+    ),
+    no_live: bool = typer.Option(
+        False,
+        "--no-live",
+        help=(
+            "Не подмешивать live-данные SWPC. Для воспроизводимых прогонов по архиву "
+            "(даты старше двух суток)."
+        ),
+    ),
 ) -> None:
     """Прогнать полный pipeline: extract → LLM → render → deliver."""
     products = ["icao_brief", "swpc_discussion"] if "all" in product else product
+    query_time = _parse_query_time(date)
+    _warn_if_live_data_may_be_mixed(query_time, no_live)
 
-    logger.info("Running pipeline: products=%s, provider=%s", products, provider)
+    logger.info(
+        "Running pipeline: products=%s, provider=%s, query_time=%s, no_live=%s",
+        products,
+        provider,
+        query_time,
+        no_live,
+    )
 
     llm_provider = _get_provider(provider)
 
@@ -63,6 +94,8 @@ def run(
         products=products,
         provider=llm_provider,
         fail_on_grounding=fail_on_grounding,
+        query_time=query_time,
+        no_live=no_live,
     )
 
     if not result.ok:
@@ -99,6 +132,45 @@ def run(
         f"Done. {len(saved_files)} file(s) saved.",
         fg=typer.colors.GREEN,
     )
+
+
+def _parse_query_time(value: str | None) -> datetime | None:
+    """Момент из ``--date`` в UTC.
+
+    ``YYYY-MM-DD`` означает 12:00 UTC, как в API; ``YYYY-MM-DDTHH:MM`` — указанное время (UTC,
+    если пояс не указан). ``None`` — «сейчас».
+    """
+    if value is None:
+        return None
+    if _DATE_ARGUMENT.fullmatch(value) is None:
+        raise typer.BadParameter(
+            f"ожидается YYYY-MM-DD или YYYY-MM-DDTHH:MM (UTC), получено {value!r}",
+            param_hint="--date",
+        )
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        raise typer.BadParameter(
+            f"не календарная дата или время: {value!r}", param_hint="--date"
+        ) from None
+    if _DATE_ONLY.fullmatch(value):
+        parsed = parsed.replace(hour=12)
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _warn_if_live_data_may_be_mixed(query_time: datetime | None, no_live: bool) -> None:
+    """Предупредить: ближе двух суток к «сейчас» без --no-live источник подмешивает live-данные."""
+    if query_time is None or no_live:
+        return
+    if datetime.now(UTC) - query_time < _LIVE_MIXING_WINDOW:
+        typer.secho(
+            "Warning: --date is within the last 2 days, so live SWPC data may be mixed in and "
+            "the run is not reproducible; add --no-live for archive replays.",
+            fg=typer.colors.YELLOW,
+            err=True,
+        )
 
 
 def _get_provider(name: str) -> BaseLLMProvider:

@@ -1,9 +1,14 @@
 """SwxExtractor: swx API → UnifiedPayload."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from heliogeo.core.logging import get_logger
+from heliogeo.extractors.swx.availability import (
+    AvailabilityReport,
+    filter_known_at,
+    parse_event_time,
+)
 from heliogeo.extractors.swx.client import SwxClient, SwxClientError
 from heliogeo.extractors.swx.mapper import (
     map_forecast,
@@ -26,14 +31,19 @@ class SwxExtractorError(Exception):
 class SwxExtractor:
     """Extractor для API 503.ifz.ru/swx.
 
-    Собирает UnifiedPayload из ответов /data и /text.
+    Собирает UnifiedPayload из ответов /data и /text. Ответ приводится к моменту запроса: события
+    и продукты прогноза «из будущего» отбрасываются (см. ``availability``).
 
     Args:
         client: HTTP-клиент. Если None — создаётся автоматически.
+
+    Attributes:
+        last_availability: что отброшено при последнем ``extract`` (``None`` до первого вызова).
     """
 
     def __init__(self, client: SwxClient | None = None) -> None:
         self._client = client or SwxClient()
+        self.last_availability: AvailabilityReport | None = None
 
     def extract(
         self,
@@ -56,9 +66,12 @@ class SwxExtractor:
         Raises:
             SwxExtractorError: если /data не удалось получить или
                 валидация не прошла.
+            ValueError: если ``query_time`` без часового пояса.
         """
         if query_time is None:
             query_time = datetime.now(UTC)
+        elif query_time.tzinfo is None or query_time.utcoffset() is None:
+            raise ValueError(f"query_time должен быть с часовым поясом, получено {query_time!r}")
 
         logger.info("Swx extract for %s (window=%s)", query_time.isoformat(), window)
 
@@ -72,6 +85,12 @@ class SwxExtractor:
         except SwxClientError as e:
             logger.exception("Failed to fetch snapshot")
             raise SwxExtractorError(f"Failed to fetch snapshot: {e}") from e
+
+        # --- 1a. Привести ответ к моменту запроса: убрать то, чего тогда ещё не было ---
+        _check_source_query_time(data, query_time)
+        data, report = filter_known_at(data, query_time)
+        self.last_availability = report
+        logger.info("Availability: %s", report.summary())
 
         # --- 2. Получить /text (опционально) ---
         text_data: dict[str, Any] | None = None
@@ -121,6 +140,21 @@ class SwxExtractor:
         )
 
         return payload, text_data
+
+
+def _check_source_query_time(data: dict[str, Any], requested: datetime) -> None:
+    """Предупредить, если источник ответил на другой момент, чем запрошен.
+
+    Фильтр ниже работает по запрошенному моменту, но расхождение значит, что источник, возможно,
+    проигнорировал время в запросе, и агрегаты в ответе относятся не к тому моменту.
+    """
+    answered = parse_event_time(data.get("query_time"))
+    if answered is not None and abs(answered - requested) > timedelta(minutes=1):
+        logger.warning(
+            "Source answered for query_time=%s, but %s was requested",
+            answered.isoformat(),
+            requested.isoformat(),
+        )
 
 
 def _window_end(data: dict[str, Any]) -> str | None:

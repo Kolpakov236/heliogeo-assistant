@@ -128,6 +128,8 @@ def map_solar_wind(data: dict[str, Any]) -> dict[str, Any]:
     Особенности API:
     - `source` = rtsw | omni_hro_1min | omni2_hourly. Маппим в unknown.
     - `phi_deg` → `phi`.
+    - `density` — среднее за окно (`avg`), как и скорость. `latest` не берём: в архивных ответах
+      он `null`, и значение менялось бы по смыслу от дня к дню (то последнее, то среднее).
     - `temperature` нет в API → None.
     """
     speed = data.get("speed", {})
@@ -138,7 +140,7 @@ def map_solar_wind(data: dict[str, Any]) -> dict[str, Any]:
         "speed_min": speed.get("min"),
         "speed_avg": speed.get("avg"),
         "speed_max": speed.get("max"),
-        "density": density.get("latest") or density.get("avg"),
+        "density": density.get("avg"),
         "bt": imf.get("bt"),
         "bz_min": imf.get("bz_min"),
         "bz_max": imf.get("bz_max"),

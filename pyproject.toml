@@ -33,6 +33,7 @@ mypy = "^1.9"
 types-pyyaml = "^6.0"
 pre-commit = "^4.6.2"
 types-reportlab = "^5.0.0.20260911"
+import-linter = "^2.0"
 
 [tool.poetry.scripts]
 heliogeo = "heliogeo.cli.main:app"
@@ -65,3 +66,25 @@ markers = ["db: тесты, которым нужен PostgreSQL (make up; за�
 [tool.coverage.run]
 source = ["src/heliogeo"]
 omit = ["*/tests/*", "*/__init__.py"]
+
+# Границы модулей проверяет `lint-imports` (входит в `make lint`). Запрещены и косвенные импорты.
+[tool.importlinter]
+root_packages = ["heliogeo"]
+
+[[tool.importlinter.contracts]]
+name = "generation не ходит в хранилище напрямую"
+type = "forbidden"
+source_modules = ["heliogeo.generation"]
+forbidden_modules = ["heliogeo.storage", "heliogeo.extractors"]
+
+[[tool.importlinter.contracts]]
+name = "validation не видит промптов генератора"
+type = "forbidden"
+source_modules = ["heliogeo.validation"]
+forbidden_modules = ["heliogeo.llm.prompts"]
+
+[[tool.importlinter.contracts]]
+name = "forecast не зависит от llm"
+type = "forbidden"
+source_modules = ["heliogeo.forecast"]
+forbidden_modules = ["heliogeo.llm", "heliogeo.generation"]

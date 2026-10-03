@@ -197,7 +197,7 @@ def test_map_solar_wind_quiet(snapshot_quiet: dict) -> None:
     assert sw["speed_min"] == 347.9
     assert sw["speed_avg"] == 398.93
     assert sw["speed_max"] == 449.6
-    assert sw["density"] == 4.36
+    assert sw["density"] == 4.084  # среднее за окно; latest = 4.36 не берётся
     assert sw["bt"] == 5.17
     assert sw["bz_min"] == -5.71
     assert sw["bz_max"] == 5.24
@@ -212,6 +212,29 @@ def test_map_solar_wind_storm(snapshot_storm: dict) -> None:
     # В бурю скорость выше
     assert sw["speed_avg"] is not None
     assert sw["speed_avg"] > 400
+
+
+def test_map_solar_wind_density_is_the_window_average(
+    snapshot_quiet: dict, snapshot_storm: dict
+) -> None:
+    """density — среднее за окно, как и скорость; latest не берётся.
+
+    В архиве latest бывает null (2024-05-11), и тогда значение меняло бы смысл от дня к дню.
+    """
+    assert map_solar_wind(snapshot_quiet["solar_wind"])["density"] == 4.084
+    assert map_solar_wind(snapshot_storm["solar_wind"])["density"] == 15.647
+    assert snapshot_storm["solar_wind"]["density"]["latest"] is None
+
+
+def test_map_solar_wind_density_without_average_is_none() -> None:
+    """Нет среднего — нет значения: latest его не подменяет."""
+    assert map_solar_wind({"density": {"latest": 4.36}})["density"] is None
+    assert map_solar_wind({"density": {}})["density"] is None
+    assert map_solar_wind({})["density"] is None
+
+
+def test_map_solar_wind_zero_density_average_is_kept() -> None:
+    assert map_solar_wind({"density": {"avg": 0.0, "latest": 4.36}})["density"] == 0.0
 
 
 def test_map_solar_wind_empty() -> None:

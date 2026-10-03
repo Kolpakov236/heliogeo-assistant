@@ -7,6 +7,7 @@ lint:
 	poetry run ruff check src tests
 	poetry run mypy src
 	poetry run python -m heliogeo.contracts.validate
+	poetry run lint-imports --no-logo
 
 format:
 	poetry run ruff format src tests
@@ -19,7 +20,7 @@ run:
 
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} +
-	rm -rf .pytest_cache .mypy_cache .ruff_cache .coverage htmlcov
+	rm -rf .pytest_cache .mypy_cache .ruff_cache .import_linter_cache .coverage htmlcov
 
 # --- PostgreSQL (docker compose) и миграции Alembic ---
 # --project-directory . — чтобы compose читал корневой .env

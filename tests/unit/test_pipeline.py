@@ -83,7 +83,72 @@ def test_build_payload_safe_with_mock() -> None:
     assert "metadata" in payload
 
 
+def test_build_payload_safe_forwards_moment_and_no_live() -> None:
+    """Момент данных и no_live доходят до build_payload."""
+    moment = datetime(2026, 9, 1, 0, 30, tzinfo=UTC)
+    with patch(
+        "heliogeo.pipeline.pipeline.build_payload", return_value=_stable_payload()
+    ) as builder:
+        payload, error = build_payload_safe(query_time=moment, no_live=True)
+
+    assert error is None
+    assert payload is not None
+    builder.assert_called_once_with(query_time=moment, no_live=True)
+
+
+def test_build_payload_safe_defaults_mean_now_with_live_data() -> None:
+    with patch(
+        "heliogeo.pipeline.pipeline.build_payload", return_value=_stable_payload()
+    ) as builder:
+        build_payload_safe()
+
+    builder.assert_called_once_with(query_time=None, no_live=False)
+
+
 # --- run_pipeline (с mock-билдером) ---
+
+
+def test_run_pipeline_forwards_moment_and_no_live() -> None:
+    """run_pipeline передаёт query_time и no_live сборщику payload."""
+    moment = datetime(2026, 9, 1, 12, tzinfo=UTC)
+    with patch(
+        "heliogeo.pipeline.pipeline.build_payload", return_value=_stable_payload()
+    ) as builder:
+        result = run_pipeline(
+            products=["icao_brief"],
+            provider=_mock_provider(),
+            query_time=moment,
+            no_live=True,
+        )
+
+    assert result.ok
+    builder.assert_called_once_with(query_time=moment, no_live=True)
+
+
+def test_run_pipeline_defaults_mean_now_with_live_data() -> None:
+    with patch(
+        "heliogeo.pipeline.pipeline.build_payload", return_value=_stable_payload()
+    ) as builder:
+        run_pipeline(products=["icao_brief"], provider=_mock_provider())
+
+    builder.assert_called_once_with(query_time=None, no_live=False)
+
+
+def test_run_pipeline_reports_a_failed_build_with_a_naive_moment() -> None:
+    """Наивное время — ошибка шага build_payload, а не падение пайплайна."""
+    with patch(
+        "heliogeo.pipeline.pipeline.build_payload",
+        side_effect=ValueError("query_time должен быть с часовым поясом"),
+    ):
+        result = run_pipeline(
+            products=["icao_brief"],
+            provider=_mock_provider(),
+            query_time=datetime(2026, 9, 1, 12),
+        )
+
+    assert not result.ok
+    assert result.error is not None
+    assert "часовым поясом" in result.error
 
 
 def test_run_pipeline_default_products() -> None:

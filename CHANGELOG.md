@@ -29,6 +29,27 @@
 - Цели Makefile `contracts` и `contracts-lock`, настройка `CONTRACTS_DIR`.
 - Документация `docs/contracts.md`, тесты контрактов и моки `tests/mocks/contracts.py`,
   `tests/mocks/observation.py`.
+- Пакеты-заготовки целевой структуры: `mirror`, `facts`, `features`, `forecast`, `planner`,
+  `generation`, `validation`, `publishing`, `eval` (пока только описание назначения).
+- Контроль границ модулей: import-linter (dev-зависимость) и три правила в `pyproject.toml`
+  (`generation` не импортирует `storage` и `extractors`, `validation` — `llm.prompts`,
+  `forecast` — `llm` и `generation`); тесты `tests/unit/test_import_boundaries.py`;
+  описание — `docs/architecture.md`.
+- Модель факта `heliogeo.facts`: `Fact` с видами значений (`FactKind`, включая `distribution`),
+  статусами качества (`QCStatus`), происхождением, неопределённостью и политикой отображения;
+  инварианты проверяются при создании (имя, время только с поясом, форма значения по виду, связь
+  `missing`/`ok` со значением); `display_value` (округление до шага, Kp в трёхбалльной записи,
+  язык), `canonical_statement` по шаблону факта, `with_value`, сериализация `to_dict` /
+  `from_dict` без потерь.
+- Моки фактов `tests/mocks/facts.py` (набор по спокойному дню 2026-09-01) и документация
+  `docs/facts.md`.
+- Приведение ответа источника к моменту запроса (`heliogeo.extractors.swx.availability`):
+  отбрасываются вспышки (по пику) и выбросы позже момента запроса, а также трёхдневный прогноз и
+  daypre, выпущенные позже него; отчёт — `SwxExtractor.last_availability` и строка журнала.
+- Параметры `--date` и `--no-live` у `heliogeo run`; предупреждение, если дата ближе двух суток и
+  `--no-live` не указан (источник тогда подмешивает live-данные, прогон не воспроизводим).
+- Документация `docs/data_sources.md`: правила работы с источником, что фильтруется, какие
+  ограничения остаются.
 
 ### Changed
 - `Settings` собирает `database_url` из `POSTGRES_*`, если `DATABASE_URL` не задан. В
@@ -36,7 +57,18 @@
   `DATABASE_URL=postgresql://user:pass@localhost:5432/heliogeo` в своём `.env` нужно удалить.
 - pytest по умолчанию пропускает тесты с маркером `db` (`-m 'not db'`); они запускаются
   командой `make test-db`.
-- `make lint` дополнительно проверяет контракты.
+- `make lint` дополнительно проверяет контракты и границы модулей (`lint-imports`);
+  `make clean` удаляет кэш import-linter.
+- Клиент swx передаёт в пути запроса время (`YYYY-MM-DDTHH:MM`, UTC), а не только дату: дата без
+  времени читается источником как 12:00 UTC. Время без часового пояса отвергается.
+- Клиент swx повторяет запрос (до трёх попыток) только при таймаутах, сетевых сбоях, HTTP 408, 429
+  и 5xx; 404 и другие 4xx не повторяются; ответ не в формате JSON — ошибка клиента.
+- `SwxExtractor.extract` отбрасывает события «из будущего»: на 12:00 по снимку 2026-09-01 в payload
+  остаются одна вспышка из восьми и один выброс из трёх; для целых суток передавайте момент не
+  раньше конца окна.
+- `solar_wind.density` в payload — среднее за окно (`avg`), а не «последнее или среднее»: в архиве
+  «последнее» бывает `null`, и значение менялось по смыслу от дня к дню.
+- `run_pipeline` и `build_payload_safe` принимают `query_time` и `no_live`.
 
 ## [0.1.0] - 2026-09-22
 

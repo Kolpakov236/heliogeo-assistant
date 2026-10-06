@@ -98,13 +98,26 @@ def _empty_payload() -> dict[str, Any]:
     }
 
 
-def build_payload_safe() -> tuple[dict[str, Any] | None, str | None]:
+def build_payload_safe(
+    query_time: datetime | None = None,
+    window: str | None = None,
+    no_live: bool = False,
+) -> tuple[dict[str, Any] | None, str | None]:
     """Собрать payload. Возвращает (payload, error).
+
+    Args:
+        query_time: момент UTC. None → «сейчас».
+        window: окно агрегации (15m, 1h, 1d). None → сутки UTC.
+        no_live: запретить подмешивание live-данных SWPC.
 
     Обёртка над `pipeline.builder.build_payload`, которая не бросает.
     """
     try:
-        payload = build_payload()
+        payload = build_payload(
+            query_time=query_time,
+            window=window,
+            no_live=no_live,
+        )
         if hasattr(payload, "model_dump"):
             return payload.model_dump(mode="json"), None
         if isinstance(payload, dict):
@@ -134,6 +147,7 @@ def run_pipeline(
     *,
     fail_on_grounding: bool = False,
     deliver: bool = False,
+    **kwargs,
 ) -> PipelineResult:
     """Прогнать пайплайн: build → generate → grounding → (render → deliver).
 
@@ -153,9 +167,8 @@ def run_pipeline(
 
     # --- Шаг 1: build payload ---
     t0 = time.monotonic()
-    payload, error = build_payload_safe()
+    payload, error = build_payload_safe(**kwargs)
     duration = int((time.monotonic() - t0) * 1000)
-
     if error or payload is None:
         result.ok = False
         result.error = error or "unknown build error"

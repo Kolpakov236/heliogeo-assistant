@@ -114,7 +114,7 @@ def test_grounding_accepts_pydantic_model() -> None:
 
     now = datetime(2026, 5, 12, tzinfo=UTC)
     payload = UnifiedPayload(
-        metadata=Metadata(issued_utc=now, valid_until_utc=now),
+        metadata=Metadata(issued_utc=now, valid_until_utc=now, source_products=[]),
     )
     text = "No data available."
     report = check_grounding(payload, text)

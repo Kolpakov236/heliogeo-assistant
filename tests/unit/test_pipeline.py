@@ -24,7 +24,7 @@ def _stable_payload() -> UnifiedPayload:
     """Стабильный payload для тестов."""
     now = datetime(2026, 9, 1, 12, tzinfo=UTC)
     return UnifiedPayload(
-        metadata=Metadata(issued_utc=now, valid_until_utc=now),
+        metadata=Metadata(issued_utc=now, valid_until_utc=now, source_products=[]),
     )
 
 
@@ -69,7 +69,9 @@ def test_build_payload_safe_with_mock() -> None:
     """build_payload_safe возвращает dict с mock-экстрактором."""
     mock_extractor = MagicMock()
     mock_payload = MagicMock()
-    mock_payload.model_dump.return_value = {"metadata": {"issued_utc": "2026-09-01T12:00:00Z"}}
+    mock_payload.model_dump.return_value = {
+        "metadata": {"issued_utc": "2026-09-01T12:00:00Z"}
+    }
     mock_extractor.extract.return_value = (mock_payload, None)
 
     with patch(

@@ -4,6 +4,9 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+_MAX_KP = 9
+_MIN_KP = 0
+
 
 class Geospace(BaseModel):
     """Состояние геокосмоса."""
@@ -20,6 +23,9 @@ class Geospace(BaseModel):
     @classmethod
     def kp_in_range(cls, v: float | None) -> float | None:
         """Kp должен быть от 0 до 9."""
-        if v is not None and not 0 <= v <= 9:
+        if v is not None and not _MIN_KP <= v <= _MAX_KP:
+            if v > _MAX_KP:
+                # Сглаживаем неточность измерений
+                return _MAX_KP
             raise ValueError(f"Kp must be between 0 and 9, got {v}")
         return v

@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
 
+import httpx
 import pytest
 
 from heliogeo.extractors.swx.client import SwxClient
@@ -20,6 +21,18 @@ from heliogeo.extractors.swx.extractor import SwxExtractor
 from heliogeo.llm import MockLLMProvider, generate_product
 from heliogeo.products import ICAOBriefProduct, SWPCDiscussionProduct
 from heliogeo.schema import UnifiedPayload
+from tests.mocks.swx import (
+    FETCHED_AT,
+    QUIET_DATA,
+    QUIET_NOON,
+    QUIET_TEXT,
+    STORM_DATA,
+    STORM_NOON,
+    STORM_TEXT,
+    FakeSwxServer,
+    fixture_response,
+    make_data_response,
+)
 
 FIXTURES_DIR = Path(__file__).resolve().parents[2] / "fixtures"
 
@@ -40,7 +53,7 @@ def snapshot_storm() -> dict:
 
 @pytest.fixture
 def client() -> SwxClient:
-    """Mock-клиент (URL не используется, т.к. get_snapshot мокается)."""
+    """Mock-клиент (URL не используется, т.к. get_data мокается)."""
     return SwxClient(base_url="https://test.local")
 
 
@@ -50,7 +63,7 @@ def client() -> SwxClient:
 def test_e2e_quiet_extract_to_payload(client: SwxClient, snapshot_quiet: dict) -> None:
     """Шаг 1: extract → UnifiedPayload."""
     extractor = SwxExtractor(client=client)
-    with patch.object(client, "get_snapshot", return_value=snapshot_quiet):
+    with patch.object(client, "get_data", return_value=make_data_response(snapshot_quiet)):
         payload, _ = extractor.extract(query_time=datetime(2026, 9, 1, 12, tzinfo=UTC))
 
     assert isinstance(payload, UnifiedPayload)
@@ -63,7 +76,7 @@ def test_e2e_quiet_extract_to_payload(client: SwxClient, snapshot_quiet: dict) -
 def test_e2e_quiet_payload_to_icao(client: SwxClient, snapshot_quiet: dict) -> None:
     """Шаг 2: payload → ICAO product (mock LLM)."""
     extractor = SwxExtractor(client=client)
-    with patch.object(client, "get_snapshot", return_value=snapshot_quiet):
+    with patch.object(client, "get_data", return_value=make_data_response(snapshot_quiet)):
         payload, _ = extractor.extract(query_time=datetime(2026, 9, 1, 12, tzinfo=UTC))
 
     provider = MockLLMProvider(response="No data available.")
@@ -78,7 +91,7 @@ def test_e2e_quiet_payload_to_icao(client: SwxClient, snapshot_quiet: dict) -> N
 def test_e2e_quiet_payload_to_swpc(client: SwxClient, snapshot_quiet: dict) -> None:
     """Шаг 3: payload → SWPC product (mock LLM)."""
     extractor = SwxExtractor(client=client)
-    with patch.object(client, "get_snapshot", return_value=snapshot_quiet):
+    with patch.object(client, "get_data", return_value=make_data_response(snapshot_quiet)):
         payload, _ = extractor.extract()
 
     provider = MockLLMProvider(response="Solar activity is quiet.")
@@ -91,7 +104,7 @@ def test_e2e_quiet_payload_to_swpc(client: SwxClient, snapshot_quiet: dict) -> N
 def test_e2e_quiet_full_chain(client: SwxClient, snapshot_quiet: dict) -> None:
     """Полный цикл: extract → ICAO + SWPC + grounding."""
     extractor = SwxExtractor(client=client)
-    with patch.object(client, "get_snapshot", return_value=snapshot_quiet):
+    with patch.object(client, "get_data", return_value=make_data_response(snapshot_quiet)):
         payload, _ = extractor.extract(query_time=datetime(2026, 9, 1, 12, tzinfo=UTC))
 
     provider = MockLLMProvider(
@@ -115,7 +128,9 @@ def test_e2e_quiet_full_chain(client: SwxClient, snapshot_quiet: dict) -> None:
 def test_e2e_storm_full_chain(client: SwxClient, snapshot_storm: dict) -> None:
     """Бурный день: extract → products."""
     extractor = SwxExtractor(client=client)
-    with patch.object(client, "get_snapshot", return_value=snapshot_storm):
+    with patch.object(
+        client, "get_data", return_value=make_data_response(snapshot_storm, at=STORM_NOON)
+    ):
         payload, _ = extractor.extract(query_time=datetime(2024, 5, 11, 12, tzinfo=UTC))
 
     assert payload.geospace.current_level == "storm"
@@ -140,7 +155,9 @@ def test_e2e_storm_full_chain(client: SwxClient, snapshot_storm: dict) -> None:
 def test_e2e_storm_grounding_catches_hallucination(client: SwxClient, snapshot_storm: dict) -> None:
     """Grounding ловит выдуманные числа в бурном дне."""
     extractor = SwxExtractor(client=client)
-    with patch.object(client, "get_snapshot", return_value=snapshot_storm):
+    with patch.object(
+        client, "get_data", return_value=make_data_response(snapshot_storm, at=STORM_NOON)
+    ):
         payload, _ = extractor.extract(query_time=datetime(2024, 5, 11, 12, tzinfo=UTC))
 
     # Придумываем число, которого точно нет
@@ -157,7 +174,7 @@ def test_e2e_storm_grounding_catches_hallucination(client: SwxClient, snapshot_s
 def test_e2e_technical_issues_present(client: SwxClient, snapshot_quiet: dict) -> None:
     """technical_issues заполнены (OMNI + SGPS)."""
     extractor = SwxExtractor(client=client)
-    with patch.object(client, "get_snapshot", return_value=snapshot_quiet):
+    with patch.object(client, "get_data", return_value=make_data_response(snapshot_quiet)):
         payload, _ = extractor.extract()
 
     assert payload.technical_issues is not None
@@ -171,7 +188,7 @@ def test_e2e_technical_issues_present(client: SwxClient, snapshot_quiet: dict) -
 def test_e2e_payload_roundtrip(client: SwxClient, snapshot_quiet: dict) -> None:
     """Payload сериализуется в JSON и обратно."""
     extractor = SwxExtractor(client=client)
-    with patch.object(client, "get_snapshot", return_value=snapshot_quiet):
+    with patch.object(client, "get_data", return_value=make_data_response(snapshot_quiet)):
         payload, _ = extractor.extract()
 
     json_str = payload.model_dump_json()
@@ -187,7 +204,7 @@ def test_e2e_payload_roundtrip(client: SwxClient, snapshot_quiet: dict) -> None:
 def test_e2e_generate_product_directly(client: SwxClient, snapshot_quiet: dict) -> None:
     """generate_product работает с реальным payload."""
     extractor = SwxExtractor(client=client)
-    with patch.object(client, "get_snapshot", return_value=snapshot_quiet):
+    with patch.object(client, "get_data", return_value=make_data_response(snapshot_quiet)):
         payload, _ = extractor.extract()
 
     provider = MockLLMProvider(response="No data available.")
@@ -197,3 +214,57 @@ def test_e2e_generate_product_directly(client: SwxClient, snapshot_quiet: dict) 
     assert result.product == "icao_brief"
     assert result.payload_json != ""
     assert "metadata" in result.payload_json
+
+
+# --- E2E: через HTTP-слой (подставной сервер вместо сети) ---
+
+
+@pytest.mark.parametrize(
+    ("data_name", "text_name", "moment", "expected_name"),
+    [
+        pytest.param(QUIET_DATA, QUIET_TEXT, QUIET_NOON, "payload_quiet_1200.json", id="quiet"),
+        pytest.param(STORM_DATA, STORM_TEXT, STORM_NOON, "payload_storm_1200.json", id="storm"),
+    ],
+)
+def test_e2e_through_the_http_layer(
+    monkeypatch: pytest.MonkeyPatch,
+    data_name: str,
+    text_name: str,
+    moment: datetime,
+    expected_name: str,
+) -> None:
+    """Байты ответа -> клиент -> типизированный ответ -> экстрактор -> тот же payload, что раньше."""
+    server = FakeSwxServer(monkeypatch, [fixture_response(data_name), fixture_response(text_name)])
+    extractor = SwxExtractor(
+        client=SwxClient(base_url="https://test.local", clock=lambda: FETCHED_AT)
+    )
+
+    payload, text = extractor.extract(query_time=moment, include_text=True)
+
+    stamp = moment.strftime("%Y-%m-%dT%H:%M")
+    assert [request.url.path for request in server.requests] == [
+        f"/data/{stamp}",
+        f"/text/{stamp}",
+    ]
+    expected = json.loads((FIXTURES_DIR / "expected" / expected_name).read_text(encoding="utf-8"))
+    assert payload.model_dump(mode="json") == expected
+    assert extractor.last_response is not None
+    assert extractor.last_response.problems == ()
+    assert extractor.last_response.unknown_fields == ()
+    assert text is not None
+    assert text.kind == "discussion"
+    assert text.problems == ()
+    assert text.available
+
+
+def test_e2e_http_failure_of_text_does_not_break_the_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Текст не критичен: 404 на /text при исправном /data — payload собирается."""
+    FakeSwxServer(monkeypatch, [fixture_response(QUIET_DATA), httpx.Response(404)])
+    extractor = SwxExtractor(client=SwxClient(base_url="https://test.local"))
+
+    payload, text = extractor.extract(query_time=QUIET_NOON, include_text=True)
+
+    assert isinstance(payload, UnifiedPayload)
+    assert text is None

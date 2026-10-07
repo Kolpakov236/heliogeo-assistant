@@ -263,6 +263,23 @@ def test_input_is_not_mutated() -> None:
     assert result["geomag"]["fcst"] is not QUIET["geomag"]["fcst"]
 
 
+def test_result_shares_no_objects_with_the_input() -> None:
+    """Копия полная: правка результата не меняет исходный ответ, даже во вложенных объектах."""
+    original = copy.deepcopy(QUIET)
+
+    result, _ = filter_known_at(QUIET, NOON_QUIET)
+
+    assert result["solar_wind"] is not QUIET["solar_wind"]
+    assert result["solar_wind"]["speed"] is not QUIET["solar_wind"]["speed"]
+    assert result["active_regions"][0] is not QUIET["active_regions"][0]
+    assert result["sources"][0] is not QUIET["sources"][0]
+    assert result["flares"][0] is not QUIET["flares"][0]  # оставшаяся вспышка — тоже копия
+    result["solar_wind"]["speed"]["max"] = 0.0
+    result["active_regions"][0]["noaa"] = 0
+    result["flares"][0]["class"] = "X99"
+    assert original == QUIET
+
+
 def test_unknown_fields_survive() -> None:
     data = copy.deepcopy(QUIET)
     data["new_section"] = {"x": 1}

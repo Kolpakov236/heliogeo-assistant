@@ -1,7 +1,9 @@
 """HTTP-клиент к API 503.ifz.ru/swx."""
 
+import json
+from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 from tenacity import (
@@ -13,6 +15,11 @@ from tenacity import (
 
 from heliogeo.core.config import get_settings
 from heliogeo.core.logging import get_logger
+from heliogeo.extractors.swx.response import (
+    SwxDataResponse,
+    SwxResponseError,
+    SwxTextResponse,
+)
 
 logger = get_logger(__name__)
 
@@ -23,8 +30,22 @@ _DEFAULT_BASE_URL = "https://503.ifz.ru/swx"
 _RETRY_STATUSES = frozenset({408, 429})
 
 
+SwxErrorKind = Literal["unavailable", "not_found", "rejected", "malformed"]
+
+
 class SwxClientError(Exception):
-    """Ошибка клиента swx."""
+    """Ошибка клиента swx.
+
+    Attributes:
+        kind: что случилось. ``unavailable`` — сеть, таймаут, HTTP 408/429/5xx: повтор может
+            помочь. ``not_found`` — HTTP 404, за этот момент данных нет. ``rejected`` — источник
+            отверг запрос (другие 4xx: адрес, параметры, доступ). ``malformed`` — ответ получен,
+            но это не то, что ждали (не JSON, не объект, не похоже на ответ эндпоинта).
+    """
+
+    def __init__(self, message: str, *, kind: SwxErrorKind = "malformed") -> None:
+        super().__init__(message)
+        self.kind = kind
 
 
 def _is_transient(exc: BaseException) -> bool:
@@ -35,25 +56,65 @@ def _is_transient(exc: BaseException) -> bool:
     return isinstance(exc, httpx.TransportError)
 
 
+def _error_kind(exc: httpx.HTTPError) -> SwxErrorKind:
+    """Что значит ошибка HTTP для вызывающего: повтор, нет данных или отказ источника."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        status = exc.response.status_code
+        if status == 404:
+            return "not_found"
+        return "unavailable" if _is_transient(exc) else "rejected"
+    return "unavailable" if isinstance(exc, httpx.TransportError) else "malformed"
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
 class SwxClient:
     """HTTP-клиент к swx API.
+
+    Методы возвращают типизированные ответы (``SwxDataResponse``, ``SwxTextResponse``): форма,
+    времена и неизвестные поля уже проверены, данные приведены к запрошенному моменту.
 
     Args:
         base_url: базовый URL. По умолчанию — 503.ifz.ru/swx.
         timeout: таймаут запроса в секундах.
+        clock: источник текущего времени (UTC); подменяется в тестах. Нужен для запроса «сейчас» и
+            для ``fetched_at`` ответа.
     """
 
     def __init__(
         self,
         base_url: str | None = None,
         timeout: float = 30.0,
+        *,
+        clock: Callable[[], datetime] = _utc_now,
     ) -> None:
         settings = get_settings()
         self._base_url = base_url or getattr(settings, "swx_base_url", None) or _DEFAULT_BASE_URL
         self._timeout = timeout
+        self._clock = clock
+        # О неизвестном поле ответа предупреждаем один раз за жизнь клиента, а не при каждом запросе.
+        self._reported_unknown: set[tuple[str, str]] = set()
 
-    def _format_time(self, query_time: datetime | None) -> str:
-        """Момент в пути запроса: ``YYYY-MM-DDTHH:MM`` (UTC, с точностью до минуты) или ``now``.
+    def resolve_moment(self, query_time: datetime | None) -> datetime:
+        """Запрошенный момент: UTC, с точностью до минуты. ``None`` — «сейчас» по часам клиента.
+
+        Источнику всегда уходит конкретное время, а не слово ``now``: так запрошенный момент один и
+        тот же в пути запроса, в отсечке событий и в ответе. Часы клиента — единственное место, где
+        «сейчас» определяется (извлекатель и пайплайн системных часов не читают), поэтому момент,
+        определённый здесь, можно передавать дальше как событие прогона.
+
+        Raises:
+            ValueError: если ``query_time`` без часового пояса.
+        """
+        moment = self._clock() if query_time is None else query_time
+        if moment.tzinfo is None or moment.utcoffset() is None:
+            raise ValueError(f"query_time должен быть с часовым поясом, получено {moment!r}")
+        return moment.astimezone(UTC).replace(second=0, microsecond=0)
+
+    def _format_time(self, query_time: datetime) -> str:
+        """Момент в пути запроса: ``YYYY-MM-DDTHH:MM`` (UTC, с точностью до минуты).
 
         Время передаётся всегда: дата без времени трактуется источником как 12:00 UTC, и запрос
         на 00:30 молча превратился бы в запрос на полдень. Наивное время запрещено: оно сдвигает
@@ -62,8 +123,6 @@ class SwxClient:
         Raises:
             ValueError: если ``query_time`` без часового пояса.
         """
-        if query_time is None:
-            return "now"
         if query_time.tzinfo is None or query_time.utcoffset() is None:
             raise ValueError(f"query_time должен быть с часовым поясом, получено {query_time!r}")
         return query_time.astimezone(UTC).strftime("%Y-%m-%dT%H:%M")
@@ -74,78 +133,133 @@ class SwxClient:
         wait=wait_exponential(multiplier=1, min=1, max=10),
         reraise=True,
     )
-    def _get(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
-        """GET-запрос; до трёх попыток при временных ошибках (см. ``_is_transient``)."""
+    def _fetch(self, path: str, params: dict[str, Any] | None = None) -> bytes:
+        """GET-запрос; тело ответа как получено. До трёх попыток при временных ошибках."""
         url = f"{self._base_url}{path}"
         logger.debug("GET %s params=%s", url, params)
 
         with httpx.Client(timeout=self._timeout) as client:
             response = client.get(url, params=params)
             response.raise_for_status()
-            try:
-                data = response.json()
-            except ValueError as exc:
-                raise SwxClientError(f"Response is not valid JSON: {exc}") from exc
-            if not isinstance(data, dict):
-                raise SwxClientError(f"Unexpected response type: {type(data).__name__}")
-            return data
+            return response.content
 
-    def get_snapshot(
+    def _download(
+        self, path: str, params: dict[str, Any] | None, what: str
+    ) -> tuple[bytes, datetime]:
+        """Тело ответа и время его получения; ошибки HTTP становятся ``SwxClientError``."""
+        try:
+            body = self._fetch(path, params)
+        except httpx.HTTPError as e:
+            logger.exception("Failed to get %s for %s", what, path)
+            raise SwxClientError(f"Failed to get {what}: {e}", kind=_error_kind(e)) from e
+        return body, self._clock()
+
+    @staticmethod
+    def _decode_object(body: bytes) -> dict[str, Any]:
+        """JSON-объект из тела ответа; всё остальное — ошибка клиента."""
+        try:
+            data = json.loads(body)
+        except ValueError as exc:
+            raise SwxClientError(f"Response is not valid JSON: {exc}") from exc
+        if not isinstance(data, dict):
+            raise SwxClientError(f"Unexpected response type: {type(data).__name__}")
+        return data
+
+    def _report(self, response: SwxDataResponse | SwxTextResponse, endpoint: str) -> None:
+        """Предупредить о том, что в ответе показалось неправильным; о новых полях — один раз."""
+        for problem in response.problems:
+            logger.warning(
+                "SWX %s response for %s: %s", endpoint, response.requested_at.isoformat(), problem
+            )
+        new_fields = [
+            name
+            for name in response.unknown_fields
+            if (endpoint, name) not in self._reported_unknown
+        ]
+        if new_fields:
+            self._reported_unknown.update((endpoint, name) for name in new_fields)
+            logger.warning(
+                "SWX %s response has unknown fields: %s", endpoint, ", ".join(new_fields)
+            )
+
+    def get_data(
         self,
         query_time: datetime | None = None,
         window: str | None = None,
         no_live: bool = False,
-    ) -> dict[str, Any]:
-        """Снимок данных космической погоды.
+    ) -> SwxDataResponse:
+        """Данные космической погоды на момент ``query_time``.
 
         Args:
-            query_time: момент UTC с часовым поясом. None → «сейчас».
+            query_time: момент UTC с часовым поясом (секунды отбрасываются). None → «сейчас».
             window: окно агрегации (15m, 1h, 1d). None → сутки UTC.
             no_live: запретить подмешивание live-данных SWPC. Для воспроизводимых прогонов:
                 только с датами старше двух суток.
 
         Returns:
-            dict с полями: query_time, window, active_regions, flares,
-            cmes, particles, solar_wind, geomag, sources, notes.
+            Типизированный ответ: ``raw`` как получено, ``data`` приведён к запрошенному
+            моменту (события и прогнозы «из будущего» убраны), плюс проверки и происхождение.
 
         Raises:
-            SwxClientError: при ошибке HTTP или невалидном ответе.
+            SwxClientError: при ошибке HTTP, не-JSON, а также если тело не похоже на ответ
+                ``/data`` (например, JSON с ошибкой вместо данных).
             ValueError: если ``query_time`` без часового пояса.
         """
-        moment = self._format_time(query_time)
+        requested_at = self.resolve_moment(query_time)
         params: dict[str, Any] = {}
         if window:
             params["window"] = window
         if no_live:
             params["no_live"] = "true"
 
+        body, fetched_at = self._download(
+            f"/data/{self._format_time(requested_at)}", params, what="snapshot"
+        )
+        raw = self._decode_object(body)
         try:
-            return self._get(f"/data/{moment}", params=params)
-        except httpx.HTTPError as e:
-            logger.exception("Failed to get snapshot for %s", moment)
-            raise SwxClientError(f"Failed to get snapshot: {e}") from e
+            response = SwxDataResponse.from_raw(
+                raw,
+                requested_at=requested_at,
+                fetched_at=fetched_at,
+                window_spec=window,
+                no_live=no_live,
+            )
+        except SwxResponseError as exc:
+            raise SwxClientError(f"Invalid /data response: {exc}") from exc
+        self._report(response, "/data")
+        return response
 
     def get_text(
         self,
         query_time: datetime | None = None,
-    ) -> dict[str, Any]:
-        """Текст сводки (Forecast Discussion / RSGA).
+        no_live: bool = False,
+    ) -> SwxTextResponse:
+        """Текст сводки (Forecast Discussion / RSGA): последний выпуск не позже ``query_time``.
 
         Args:
-            query_time: момент UTC с часовым поясом. None → «сейчас».
+            query_time: момент UTC с часовым поясом (секунды отбрасываются). None → «сейчас».
+            no_live: запретить подмешивание live-данных SWPC.
 
         Returns:
-            dict с полями: query_time, product, kind, cycle, issued,
-            sections, probabilities, text, source, available.
+            Типизированный ответ: выпуск, его разделы и список доступных выпусков ``available``.
 
         Raises:
-            SwxClientError: при ошибке HTTP или невалидном ответе.
+            SwxClientError: при ошибке HTTP, не-JSON, а также если тело не похоже на ответ
+                ``/text``.
             ValueError: если ``query_time`` без часового пояса.
         """
-        moment = self._format_time(query_time)
+        requested_at = self.resolve_moment(query_time)
+        params = {"no_live": "true"} if no_live else {}
 
+        body, fetched_at = self._download(
+            f"/text/{self._format_time(requested_at)}", params, what="text"
+        )
+        raw = self._decode_object(body)
         try:
-            return self._get(f"/text/{moment}")
-        except httpx.HTTPError as e:
-            logger.exception("Failed to get text for %s", moment)
-            raise SwxClientError(f"Failed to get text: {e}") from e
+            response = SwxTextResponse.from_raw(
+                raw, requested_at=requested_at, fetched_at=fetched_at, no_live=no_live
+            )
+        except SwxResponseError as exc:
+            raise SwxClientError(f"Invalid /text response: {exc}") from exc
+        self._report(response, "/text")
+        return response

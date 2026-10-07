@@ -18,6 +18,7 @@
 фильтруются: из агрегата нельзя вычесть часть окна. Это ограничение описано в docs/data_sources.md.
 """
 
+import copy
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -126,8 +127,9 @@ def filter_known_at(
 ) -> tuple[dict[str, Any], AvailabilityReport]:
     """Копия ответа ``/data`` без того, чего на ``query_time`` ещё не было.
 
-    Исходный ``data`` не изменяется. Записи, у которых время не удалось разобрать, остаются как
-    есть: дальше их проверит валидация payload.
+    Копия полная: она не делит объекты с исходным ``data``, поэтому правка одного не затрагивает
+    другой. Записи, у которых время не удалось разобрать, остаются как есть: дальше их проверит
+    валидация payload.
 
     Raises:
         ValueError: если ``query_time`` без часового пояса.
@@ -135,17 +137,17 @@ def filter_known_at(
     if query_time.tzinfo is None or query_time.utcoffset() is None:
         raise ValueError(f"query_time должен быть с часовым поясом, получено {query_time!r}")
     cutoff = query_time.astimezone(UTC)
-    result = dict(data)
+    result = copy.deepcopy(dict(data))
 
-    flares, dropped_flares, ongoing = _filter_flares(data.get("flares"), cutoff)
-    cmes, dropped_cmes = _filter_cmes(data.get("cmes"), cutoff)
-    if "flares" in data:
+    flares, dropped_flares, ongoing = _filter_flares(result.get("flares"), cutoff)
+    cmes, dropped_cmes = _filter_cmes(result.get("cmes"), cutoff)
+    if "flares" in result:
         result["flares"] = flares
-    if "cmes" in data:
+    if "cmes" in result:
         result["cmes"] = cmes
 
     dropped_forecasts: tuple[str, ...] = ()
-    geomag = data.get("geomag")
+    geomag = result.get("geomag")
     if isinstance(geomag, Mapping) and isinstance(geomag.get("fcst"), Mapping):
         fcst, dropped_forecasts = _filter_forecast(geomag["fcst"], cutoff)
         result["geomag"] = {**geomag, "fcst": fcst}

@@ -1,0 +1,189 @@
+{
+  "energetic_particles": {
+    "e_2mev": null,
+    "p_100mev_peak": null,
+    "p_10mev_background": null,
+    "p_10mev_peak": null,
+    "sep_flag": false
+  },
+  "forecast": {
+    "drivers": [],
+    "flare_c_prob": null,
+    "flare_m_prob": null,
+    "flare_x_prob": null,
+    "geomagnetic_g": null,
+    "proton_prob": null
+  },
+  "geospace": {
+    "current_level": "quiet",
+    "dst_observed": -9.0,
+    "kp_fcst": null,
+    "kp_observed": 2.333
+  },
+  "images": {
+    "euv193": null,
+    "ha": null,
+    "lasco_c2": null,
+    "lasco_c3": null,
+    "magnetogram": null,
+    "xray_plot": null
+  },
+  "metadata": {
+    "generator_version": "1.0",
+    "issued_utc": "2026-09-01T12:00:00Z",
+    "valid_until_utc": "2026-09-01T23:59:59Z"
+  },
+  "solar_activity": {
+    "active_regions": [
+      {
+        "area": 10,
+        "growth": "continuing",
+        "location": "N05W88",
+        "magnetic_class": "Beta",
+        "mcintosh": "Cro",
+        "noaa_num": 4513,
+        "spots": 2
+      },
+      {
+        "area": 20,
+        "growth": "continuing",
+        "location": "N07W24",
+        "magnetic_class": "Beta",
+        "mcintosh": "Cro",
+        "noaa_num": 4518,
+        "spots": 6
+      },
+      {
+        "area": 40,
+        "growth": "continuing",
+        "location": "S12W07",
+        "magnetic_class": "Beta",
+        "mcintosh": "Dai",
+        "noaa_num": 4520,
+        "spots": 9
+      },
+      {
+        "area": 60,
+        "growth": "new",
+        "location": "N09E67",
+        "magnetic_class": "Alpha",
+        "mcintosh": "Hsx",
+        "noaa_num": 4521,
+        "spots": 1
+      },
+      {
+        "area": 10,
+        "growth": "new",
+        "location": "N13W15",
+        "magnetic_class": "Beta",
+        "mcintosh": "Bxo",
+        "noaa_num": 4522,
+        "spots": 2
+      },
+      {
+        "area": 40,
+        "growth": "new",
+        "location": "N10E77",
+        "magnetic_class": "Alpha",
+        "mcintosh": "Hax",
+        "noaa_num": 4523,
+        "spots": 1
+      }
+    ],
+    "cme_list": [
+      {
+        "earth_directed": false,
+        "speed": 253.0,
+        "time": "2026-09-01T06:00:00Z",
+        "width": 32.0
+      },
+      {
+        "earth_directed": false,
+        "speed": 440.0,
+        "time": "2026-09-01T21:24:00Z",
+        "width": 54.0
+      },
+      {
+        "earth_directed": false,
+        "speed": 372.0,
+        "time": "2026-09-01T23:00:00Z",
+        "width": 54.0
+      }
+    ],
+    "f107": null,
+    "flares_last_24h": [
+      {
+        "ar": null,
+        "class_": "B7.7",
+        "radio_signatures": [],
+        "time": "2026-09-01T07:36:00Z"
+      },
+      {
+        "ar": null,
+        "class_": "B9.3",
+        "radio_signatures": [
+          "III"
+        ],
+        "time": "2026-09-01T12:38:00Z"
+      },
+      {
+        "ar": 4520,
+        "class_": "B7.9",
+        "radio_signatures": [
+          "III"
+        ],
+        "time": "2026-09-01T13:08:00Z"
+      },
+      {
+        "ar": null,
+        "class_": "B5.9",
+        "radio_signatures": [],
+        "time": "2026-09-01T18:22:00Z"
+      },
+      {
+        "ar": null,
+        "class_": "B6.4",
+        "radio_signatures": [],
+        "time": "2026-09-01T18:36:00Z"
+      },
+      {
+        "ar": null,
+        "class_": "C5.7",
+        "radio_signatures": [
+          "VII/2"
+        ],
+        "time": "2026-09-01T21:10:00Z"
+      },
+      {
+        "ar": null,
+        "class_": "C1.1",
+        "radio_signatures": [
+          "III"
+        ],
+        "time": "2026-09-01T22:46:00Z"
+      },
+      {
+        "ar": null,
+        "class_": "C1.9",
+        "radio_signatures": [
+          "III"
+        ],
+        "time": "2026-09-01T23:38:00Z"
+      }
+    ],
+    "ssn": null
+  },
+  "solar_wind": {
+    "bt": 5.17,
+    "bz_max": 5.24,
+    "bz_min": -5.71,
+    "density": 4.084,
+    "phi": 111.9,
+    "source": "unknown",
+    "speed_avg": 398.93,
+    "speed_max": 449.6,
+    "speed_min": 347.9,
+    "temperature": null
+  },
+  "technical_issues": "Solar wind source: omni_hro_1min (OMNI bow shock nose, not L1) | Proton >10 MeV: SGPS channels sum, not SWPC operational"
+}

@@ -1,0 +1,191 @@
+{
+  "energetic_particles": {
+    "e_2mev": null,
+    "p_100mev_peak": null,
+    "p_10mev_background": null,
+    "p_10mev_peak": null,
+    "sep_flag": true
+  },
+  "forecast": {
+    "drivers": [],
+    "flare_c_prob": null,
+    "flare_m_prob": null,
+    "flare_x_prob": null,
+    "geomagnetic_g": null,
+    "proton_prob": null
+  },
+  "geospace": {
+    "current_level": "storm",
+    "dst_observed": -167.0,
+    "kp_fcst": null,
+    "kp_observed": 9.0
+  },
+  "images": {
+    "euv193": null,
+    "ha": null,
+    "lasco_c2": null,
+    "lasco_c3": null,
+    "magnetogram": null,
+    "xray_plot": null
+  },
+  "metadata": {
+    "generator_version": "1.0",
+    "issued_utc": "2024-05-11T12:00:00Z",
+    "valid_until_utc": "2024-05-11T23:59:59Z"
+  },
+  "solar_activity": {
+    "active_regions": [
+      {
+        "area": 300,
+        "growth": "continuing",
+        "location": "N27W92",
+        "magnetic_class": "Beta-Gamma",
+        "mcintosh": "Fkc",
+        "noaa_num": 3663,
+        "spots": 10
+      },
+      {
+        "area": 2400,
+        "growth": "continuing",
+        "location": "S17W48",
+        "magnetic_class": "Beta-Gamma-Delta",
+        "mcintosh": "Fkc",
+        "noaa_num": 3664,
+        "spots": 58
+      },
+      {
+        "area": 50,
+        "growth": "continuing",
+        "location": "N08W80",
+        "magnetic_class": "Alpha",
+        "mcintosh": "Hsx",
+        "noaa_num": 3666,
+        "spots": 1
+      },
+      {
+        "area": 140,
+        "growth": "continuing",
+        "location": "N28W05",
+        "magnetic_class": "Alpha",
+        "mcintosh": "Hsx",
+        "noaa_num": 3667,
+        "spots": 1
+      },
+      {
+        "area": 50,
+        "growth": "continuing",
+        "location": "N17E14",
+        "magnetic_class": "Alpha",
+        "mcintosh": "Hax",
+        "noaa_num": 3670,
+        "spots": 6
+      },
+      {
+        "area": 30,
+        "growth": "continuing",
+        "location": "N19E17",
+        "magnetic_class": "Alpha",
+        "mcintosh": "Hsx",
+        "noaa_num": 3671,
+        "spots": 1
+      },
+      {
+        "area": 140,
+        "growth": "continuing",
+        "location": "N18E45",
+        "magnetic_class": "Beta",
+        "mcintosh": "Cai",
+        "noaa_num": 3672,
+        "spots": 9
+      }
+    ],
+    "cme_list": [
+      {
+        "earth_directed": true,
+        "speed": 1263.0,
+        "time": "2024-05-11T01:36:00Z",
+        "width": 102.0
+      },
+      {
+        "earth_directed": false,
+        "speed": 485.0,
+        "time": "2024-05-11T02:36:00Z",
+        "width": 76.0
+      },
+      {
+        "earth_directed": true,
+        "speed": 1032.0,
+        "time": "2024-05-11T03:12:00Z",
+        "width": 76.0
+      }
+    ],
+    "f107": null,
+    "flares_last_24h": [
+      {
+        "ar": 3664,
+        "class_": "X5.8",
+        "radio_signatures": [
+          "CTM",
+          "RBR 8800 2100",
+          "RBR 15400 3600",
+          "RBR 410 2700",
+          "RBR 4995 750",
+          "VI",
+          "IV",
+          "II",
+          "RBR 245 41000",
+          "RBR 610 11000",
+          "RBR 2695 780",
+          "RBR 1415 970"
+        ],
+        "time": "2024-05-11T01:23:00Z"
+      },
+      {
+        "ar": 3664,
+        "class_": "M3.1",
+        "radio_signatures": [
+          "IV",
+          "VI"
+        ],
+        "time": "2024-05-11T10:18:00Z"
+      },
+      {
+        "ar": 3664,
+        "class_": "M1.6",
+        "radio_signatures": [
+          "IV",
+          "RBR 4995 400",
+          "RBR 8800 620",
+          "RBR 15400 290"
+        ],
+        "time": "2024-05-11T10:56:00Z"
+      },
+      {
+        "ar": 3664,
+        "class_": "X1.5",
+        "radio_signatures": [
+          "IV",
+          "RBR 4995 400",
+          "RBR 8800 620",
+          "RBR 15400 290",
+          "III"
+        ],
+        "time": "2024-05-11T11:44:00Z"
+      }
+    ],
+    "ssn": null
+  },
+  "solar_wind": {
+    "bt": 7.7,
+    "bz_max": 18.14,
+    "bz_min": -47.85,
+    "density": 15.647,
+    "phi": 58.1,
+    "source": "unknown",
+    "speed_avg": 781.61,
+    "speed_max": 955.0,
+    "speed_min": 655.3,
+    "temperature": null
+  },
+  "technical_issues": "Solar wind source: omni_hro_1min (OMNI bow shock nose, not L1) | Proton >10 MeV: SGPS channels sum, not SWPC operational"
+}

@@ -296,23 +296,64 @@ def test_kp_dst_to_level_none() -> None:
 
 
 def test_map_forecast_quiet(snapshot_quiet: dict) -> None:
-    """Спокойный день: g_scale=G1."""
+    """Спокойный день: источник пишет g_scale=G1, но сетки Kp нет — шкалы G в payload нет."""
+    assert snapshot_quiet["geomag"]["fcst"]["g_scale"] == "G1"
+    assert snapshot_quiet["geomag"]["fcst"]["kp_forecast"] == []
     fc = map_forecast(snapshot_quiet["geomag"])
-    assert fc["geomagnetic_g"] == "G1"
+    assert fc["geomagnetic_g"] is None
     assert fc["flare_c_prob"] is None
     assert fc["drivers"] == []
 
 
 def test_map_forecast_storm(snapshot_storm: dict) -> None:
-    """Бурный день: g_scale выше."""
+    """Бурный день: сетки Kp в ответе нет, поле g_scale источника не используется."""
+    assert snapshot_storm["geomag"]["fcst"]["g_scale"] == "G5"
     fc = map_forecast(snapshot_storm["geomag"])
-    assert fc["geomagnetic_g"] is not None
+    assert fc["geomagnetic_g"] is None
 
 
 def test_map_forecast_empty() -> None:
     """Пустой → все None."""
     result = map_forecast({})
     assert result["geomagnetic_g"] is None
+
+
+@pytest.mark.parametrize(
+    "grid,expected",
+    [
+        ([1.67, 1.33, 2.0], None),
+        ([4.67, 4.0, 3.67], None),  # 5- — ниже G1
+        ([1.67, 5.0, 3.67], "G1"),
+        ([2.0, 5.67, 3.0], "G1"),  # 6- — всё ещё G1
+        ([3.0, 6.0], "G2"),
+        ([7.33], "G3"),
+        ([8.67], "G4"),  # 9- — G4
+        ([9.0], "G5"),
+    ],
+)
+def test_map_forecast_g_scale_comes_from_the_kp_grid(
+    grid: list[float], expected: str | None
+) -> None:
+    """Шкала G — по максимуму числовой сетки Kp, а не по полю g_scale источника."""
+    fc = map_forecast({"fcst": {"kp_forecast": grid, "g_scale": "G1"}})
+    assert fc["geomagnetic_g"] == expected
+
+
+def test_map_forecast_ignores_g_scale_of_the_source() -> None:
+    """В тексте прогноза «No G1 … are expected», а разбор источника вернул G1."""
+    assert map_forecast({"fcst": {"kp_forecast": [], "g_scale": "G1"}})["geomagnetic_g"] is None
+    assert map_forecast({"fcst": {"g_scale": "G3"}})["geomagnetic_g"] is None
+
+
+def test_map_forecast_skips_non_numeric_grid_values() -> None:
+    fc = map_forecast({"fcst": {"kp_forecast": [None, "7.0", True, 6.0]}})
+    assert fc["geomagnetic_g"] == "G2"
+
+
+def test_map_geospace_kp_fcst_is_the_grid_maximum() -> None:
+    """kp_fcst и шкала G считаются от одного и того же максимума сетки."""
+    geo = map_geospace({"fcst": {"kp_forecast": [1.67, 5.0, 3.67]}})
+    assert geo["kp_fcst"] == 5.0
 
 
 # --- map_images ---

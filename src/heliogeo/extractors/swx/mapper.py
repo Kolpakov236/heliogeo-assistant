@@ -4,6 +4,7 @@
 Никаких HTTP-запросов, никаких side effects.
 """
 
+from collections.abc import Mapping
 from typing import Any
 
 from heliogeo.core.logging import get_logger
@@ -83,7 +84,7 @@ def map_cmes(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return result
 
 
-def map_solar_activity(data: dict[str, Any]) -> dict[str, Any]:
+def map_solar_activity(data: Mapping[str, Any]) -> dict[str, Any]:
     """Секция solar_activity целиком."""
     return {
         "active_regions": map_active_regions(data.get("active_regions", [])),
@@ -166,15 +167,11 @@ def map_geospace(data: dict[str, Any]) -> dict[str, Any]:
     kp_obs = kp_obj.get("max")
     dst_obs = data.get("dst_obs")
 
-    fcst = data.get("fcst") or {}
-    kp_forecast = fcst.get("kp_forecast") or []
-    kp_fcst = max(kp_forecast) if kp_forecast else None
-
     return {
         "kp_observed": kp_obs,
         "dst_observed": dst_obs,
         "current_level": _kp_dst_to_level(kp_obs, dst_obs),
-        "kp_fcst": kp_fcst,
+        "kp_fcst": _max_kp_forecast(data.get("fcst")),
     }
 
 
@@ -193,22 +190,53 @@ def _kp_dst_to_level(kp: float | None, dst: float | None) -> str:
 
 # --- Forecast ---
 
+# Нижняя граница Kp для шкал NOAA G5…G1. Kp приходит третями (4.67 = 5-, 5.00 = 5, 5.33 = 5+), а
+# G1 — это «Kp = 5», поэтому порог — целое значение и выше (5.67 всё ещё G1).
+_G_SCALE_BY_KP = ((9.0, "G5"), (8.0, "G4"), (7.0, "G3"), (6.0, "G2"), (5.0, "G1"))
+
+
+def _max_kp_forecast(fcst: Mapping[str, Any] | None) -> float | None:
+    """Максимум числовой сетки Kp трёхдневного прогноза; ``None``, если сетки нет.
+
+    Источник отдаёт ``fcst.kp_forecast`` списком трёхчасовых значений (8 интервалов × 3 суток).
+    Значения, которые не числа (``null``, строки, bool), пропускаются.
+    """
+    values = [
+        value
+        for value in (fcst or {}).get("kp_forecast") or []
+        if isinstance(value, int | float) and not isinstance(value, bool)
+    ]
+    return max(values) if values else None
+
+
+def _g_scale_from_kp(kp: float | None) -> str | None:
+    """Максимум Kp → шкала NOAA G1–G5; ``None``, если Kp неизвестен или ниже 5 (бури нет)."""
+    if kp is None:
+        return None
+    for threshold, scale in _G_SCALE_BY_KP:
+        if kp >= threshold:
+            return scale
+    return None
+
 
 def map_forecast(data: dict[str, Any]) -> dict[str, Any]:
     """geomag.fcst + отсутствие probabilities → Forecast.
 
     Особенности API:
-    - `fcst.g_scale` = "G1" → geomagnetic_g.
+    - `geomagnetic_g` — шкала G по максимуму числовой сетки Kp (`fcst.kp_forecast`): G1 при Kp ≥ 5,
+      G2 при ≥ 6, …, G5 при 9. `None`, если сетки нет (сейчас источник её не отдаёт) или Kp не
+      дотягивает до G1.
+    - `fcst.g_scale` не используется: источник берёт его из первого вхождения «G1…G5» в тексте
+      прогноза, поэтому в спокойные дни там «G1» из фразы «No G1 … are expected».
     - `flare_c/m/x_prob`, `proton_prob` — нет в API → None.
     - `drivers` — пустой список.
     """
-    fcst = data.get("fcst") or {}
     return {
         "flare_c_prob": None,
         "flare_m_prob": None,
         "flare_x_prob": None,
         "proton_prob": None,
-        "geomagnetic_g": fcst.get("g_scale"),
+        "geomagnetic_g": _g_scale_from_kp(_max_kp_forecast(data.get("fcst"))),
         "drivers": [],
     }
 

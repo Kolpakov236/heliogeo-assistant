@@ -50,6 +50,33 @@
   `--no-live` не указан (источник тогда подмешивает live-данные, прогон не воспроизводим).
 - Документация `docs/data_sources.md`: правила работы с источником, что фильтруется, какие
   ограничения остаются.
+- Типизированные ответы источника (`heliogeo.extractors.swx.response`): `SwxDataResponse` и
+  `SwxTextResponse` с телом как получено (`raw`) и приведённым к моменту запроса (`data`), временем
+  ответа, окном, `notes`, `sources` (`SourceRef`), списком выпусков `available` (`TextRef`),
+  `availability`, `unknown_fields` и `problems`. Тело, не похожее на ответ эндпоинта, отвергается
+  (`SwxResponseError`); остальное разбирается мягко; неизвестные поля ответа журналируются.
+- Моки источника `tests/mocks/swx.py` (подставной сервер, готовые ответы клиента) и эталонные
+  payload `fixtures/expected/` с тестом, который следит, чтобы изменения клиента не меняли payload.
+- Классы ошибок шага `ErrorClass` (`heliogeo.pipeline.pipeline`): закрытый перечень из девяти
+  классов (`SOURCE_UNAVAILABLE`, `SOURCE_MALFORMED`, `TRANSIENT`, `LLM_TIMEOUT`,
+  `LLM_INVALID_OUTPUT`, `VALIDATION_FAILED`, `DATA_INSUFFICIENT`, `CONFIG_ERROR`, `INTERNAL`) и
+  `classify_error`; по классу воркфлоу решает, повторять ли шаг. Упавший шаг (`PipelineStep`) и
+  прогон (`PipelineResult`) несут `error_class`, у шага есть `retryable`. `SwxClientError` и
+  `LLMError` получили вид `kind`, по которому определяется класс.
+- Спецификация суточного воркфлоу Yandex Workflows (формат YaWL) в `deploy/workflows/daily.yaml`
+  вместо прежней условной схемы: open_run → ingest → normalize → features → forecast → generate →
+  validate → deliver, повтор по классу ошибки циклом «проверка → пауза → тот же шаг», ремонт
+  ровно один раз, ветка `fallback` с шаблонным текстом, деградация при недоступном источнике.
+  Расписание задаётся на самом воркфлоу и запускает его без входных данных, поэтому `run_id` и
+  дату выдаёт первый шаг `open_run`.
+  Тесты `tests/unit/test_workflow_specs.py` проверяют структуру, коды повторов, защиту от
+  зацикливания и то, что в состояние запуска идут ключи, а не данные. На стенде спецификация не
+  запускалась.
+- Тест `tests/unit/test_time_sources.py`: системные часы читают только разрешённые места
+  (`cli/commands/run.py`, `extractors/swx/client.py`, `contracts/envelope.py`).
+- Документация: облачный контур в `docs/architecture.md` (хранилища, функции, общие правила,
+  лимиты), раздел «Облачный контур: YDB» в `docs/database.md`, раздел «Что известно о данных
+  источника» в `docs/data_sources.md` (охват архива, дыры, дефекты разбора трёхдневного прогноза).
 
 ### Changed
 - `Settings` собирает `database_url` из `POSTGRES_*`, если `DATABASE_URL` не задан. В
@@ -69,6 +96,37 @@
 - `solar_wind.density` в payload — среднее за окно (`avg`), а не «последнее или среднее»: в архиве
   «последнее» бывает `null`, и значение менялось по смыслу от дня к дню.
 - `run_pipeline` и `build_payload_safe` принимают `query_time` и `no_live`.
+- `SwxClient.get_snapshot` заменён на `get_data`, который возвращает `SwxDataResponse`; `get_text`
+  возвращает `SwxTextResponse` и принимает `no_live`. Без `query_time` клиент берёт текущую минуту
+  по своим часам (`clock`) и передаёт источнику конкретное время вместо `now`. Приведение к моменту
+  запроса и предупреждение о расхождении моментов перенесены из экстрактора в ответ клиента.
+- `SwxExtractor.extract` собирает payload из `SwxDataResponse.data` и возвращает текст как
+  `SwxTextResponse`; ответ последнего вызова — `last_response` (`last_availability` сохранён).
+- `filter_known_at` возвращает полную копию ответа: результат не делит вложенных объектов с
+  исходным.
+- `forecast.geomagnetic_g` считается по максимуму числовой сетки Kp прогноза
+  (`geomag.fcst.kp_forecast`: G1 при Kp ≥ 5, G2 при ≥ 6, … G5 при 9), а не берётся из поля
+  `g_scale` источника: разбор прогноза в источнике ненадёжен (сетка пуста во всём архиве, `s_scale`
+  всегда `S1`, а в спокойные дни `g_scale` равен `G1` из фразы «No G1 … are expected»). Пока сетки
+  в ответе нет, `forecast.geomagnetic_g` и `geospace.kp_fcst` равны `None`; эталонные payload в
+  `fixtures/expected/` обновлены.
+- Системные часы не читаются в извлекателе, продуктах и рендере: «сейчас» определяют только часы
+  клиента источника (`SwxClient.resolve_moment` стал публичным, `SwxExtractor` им пользуется),
+  момент выпуска продукта — это `metadata.issued_utc` payload (`GenerationResult.issued_utc`,
+  `Product.metadata.issued_utc`). Продукт без этого момента не собирается (`ValueError`).
+- `render_pdf` принимает `issued_utc` и печатает строку «Issued: …» вместо «Generated: <сейчас>»;
+  документ воспроизводим: одинаковые аргументы дают одинаковые байты.
+- Шапка промпта ICAO (`ISSUED`, `VALID UNTIL`) заполняется из `metadata` payload; раньше обе строки
+  оставались пустыми.
+- `contracts/features/specs.yaml` 0.1.1: примечания к `cycle_proxy` (F10.7 есть в ежедневных
+  индексах), `swpc_g_scale` и `swpc_r_scale` (брать из числовой сетки Kp, а не из прозы).
+- `heliogeo run` при ошибке шага печатает класс ошибки; `PipelineResult.summary` показывает его у
+  упавших шагов.
+
+### Removed
+- Подстановка пустого payload, когда сборщик бросал `NotImplementedError` (`_empty_payload`): она
+  молча выпускала бюллетень без данных и читала системные часы. Теперь это ошибка шага
+  `build_payload`.
 
 ## [0.1.0] - 2026-09-22
 

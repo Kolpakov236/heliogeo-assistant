@@ -1,7 +1,8 @@
 # База данных и миграции
 
 PostgreSQL 17, доступ через SQLAlchemy 2.x (драйвер psycopg 3), миграции — Alembic. Локально БД
-поднимается в docker compose. Описание таблиц — в конце документа.
+поднимается в docker compose. Описание таблиц — в конце документа; в облаке то же состояние
+хранит YDB — см. раздел «Облачный контур: YDB».
 
 ## Что хранится
 
@@ -223,6 +224,150 @@ window_days)`; `horizon_days` 1–3, `window_days` > 0, `n` ≥ 0 (CHECK). Вс�
   считается второй, и ограничение не даёт записать по ошибке первый;
 - счётчики не отрицательны, а `cme_earth_directed + cme_direction_unknown <= cme_count`;
 - `flare_counts`, `ar_summary` и `qc` — JSON-объекты.
+
+## Облачный контур: YDB
+
+В облаке оперативное состояние хранит YDB (serverless), а всё объёмное и неизменяемое — Object
+Storage (сырьё, нормализованные сущности и признаки в Parquet, артефакты моделей, выпуски); SQL по
+большим объёмам считает Yandex Query по Parquet. PostgreSQL остаётся локальной базой для разработки
+и тестов, а таблицы и модели выше — эталоном логической схемы. Описание всего контура — в
+[architecture.md](architecture.md).
+
+### Что меняется при переходе с PostgreSQL
+
+| В PostgreSQL | В YDB | Что делать |
+|---|---|---|
+| `BIGSERIAL`, последовательности | нет | идентификатор задаёт приложение: детерминированный `forecast_id` вида `2026-10-05/geomag_level/1/m0`, а не случайный — повторный прогон того же дня перезапишет запись, а не создаст дубль |
+| `UNIQUE (issued_at, …)` | только первичный ключ | ключ начинается с даты: `(target_date, quantity, horizon_days, source)`; записи распределяются по диапазонам, горячего хвоста нет |
+| `tstzrange` | нет | два столбца `Timestamp` (`target_from`, `target_to` — в моделях выше уже так) |
+| `JSONB` с индексами и `CHECK` | `JsonDocument` | хранить и читать целиком; поиск по полям JSON не делать, нужное вынести в обычные столбцы |
+| внешние ключи | нет | целостность на стороне приложения |
+| частичные и выражения-индексы | нет | вторичный индекс по обычным столбцам, остальное — фильтром в запросе |
+| оконные функции по большой истории | ограниченно | такие запросы — в Yandex Query по Parquet |
+
+### Таблицы
+
+Прогнозы хранятся **от всех источников**, а не только от победившего: иначе нельзя задним числом
+сравнить, кто был прав, и селектору источника не на чем учиться (около 6600 строк в год).
+`rolling_metrics` включает `computed_at` в ключ: метрики — не состояние, а история, и перезапись на
+месте лишила бы возможности заметить деградацию.
+
+| Локально (PostgreSQL) | В облаке |
+|---|---|
+| `forecast` | YDB `forecast`; копия в `lake/l2/forecasts` для аналитики |
+| `forecast_verification` | YDB `forecast_verification` |
+| `rolling_metrics` | YDB `rolling_metrics`; считается в Yandex Query по Parquet, в YDB кладётся результат (десяток строк) |
+| `observation_daily` | не нужна: суточные наблюдения и признаки лежат в `lake` (`l1/…`, `l2/features`, `l2/targets`) |
+| — | YDB `run`, `issue`, `model_registry`: прогоны воркфлоу, выпуски бюллетеня, реестр действующих версий |
+
+Проект схемы YDB (в YDB не применялся: перед использованием выполните его на тестовой базе и
+исправьте то, что она не примет):
+
+```sql
+-- Прогон воркфлоу
+CREATE TABLE run (
+    run_id        Utf8  NOT NULL,
+    kind          Utf8  NOT NULL,          -- daily | verify | backfill
+    target_date   Date  NOT NULL,
+    started_at    Timestamp,
+    finished_at   Timestamp,
+    status        Utf8,                    -- running | ok | failed | degraded
+    step_log      JsonDocument,            -- шаги, длительности, классы ошибок
+    PRIMARY KEY (target_date, kind, run_id)
+);
+
+-- Выпуск бюллетеня
+CREATE TABLE issue (
+    target_date   Date  NOT NULL,
+    issue_no      Uint8 NOT NULL,          -- несколько выпусков за сутки
+    run_id        Utf8,
+    verdict       Utf8,                    -- pass | repaired | fallback
+    bulletin_key  Utf8,                    -- ссылка в Object Storage
+    trace_key     Utf8,
+    published_at  Timestamp,
+    PRIMARY KEY (target_date, issue_no)
+);
+
+-- Прогнозы: все источники
+CREATE TABLE forecast (
+    target_date    Date  NOT NULL,
+    quantity       Utf8  NOT NULL,
+    horizon_days   Uint8 NOT NULL,
+    source         Utf8  NOT NULL,
+    forecast_id    Utf8  NOT NULL,
+    issued_at      Timestamp,
+    target_from    Timestamp,
+    target_to      Timestamp,
+    distribution   JsonDocument,
+    point_estimate Utf8,
+    model_version  Utf8,
+    calibrator_version Utf8,
+    support_n      Uint32,                 -- на скольких наблюдениях построена оценка
+    fingerprint_key Utf8,                  -- отпечаток приборов
+    PRIMARY KEY (target_date, quantity, horizon_days, source)
+);
+
+-- Верификация
+CREATE TABLE forecast_verification (
+    target_date    Date  NOT NULL,
+    quantity       Utf8  NOT NULL,
+    horizon_days   Uint8 NOT NULL,
+    source         Utf8  NOT NULL,
+    verified_at    Timestamp,
+    observed_level Utf8,
+    obs_source     Utf8,
+    obs_is_final   Bool,
+    brier          Double,
+    rps            Double,
+    log_score      Double,
+    hit            Bool,
+    PRIMARY KEY (target_date, quantity, horizon_days, source)
+);
+
+-- Скользящие метрики: читаются генерацией на каждом выпуске
+CREATE TABLE rolling_metrics (
+    quantity       Utf8   NOT NULL,
+    horizon_days   Uint8  NOT NULL,
+    source         Utf8   NOT NULL,
+    window_days    Uint16 NOT NULL,
+    computed_at    Timestamp NOT NULL,
+    n              Uint32,
+    bss            Double,
+    reliability    Double,
+    resolution     Double,
+    sharpness      Double,
+    rps_mean       Double,
+    tss_g1         Double,
+    PRIMARY KEY (quantity, horizon_days, source, window_days, computed_at)
+);
+
+-- Реестр действующих версий
+CREATE TABLE model_registry (
+    quantity       Utf8  NOT NULL,
+    horizon_days   Uint8 NOT NULL,
+    active_from    Timestamp NOT NULL,
+    selected_source Utf8,
+    model_version  Utf8,
+    calibrator_version Utf8,
+    reason         Utf8,                   -- почему селектор выбрал это
+    PRIMARY KEY (quantity, horizon_days, active_from)
+);
+```
+
+От локальных таблиц проект отличается, и это нужно решить до переноса:
+
+- `forecast_verification` в YDB — одна строка на прогноз с признаком `obs_is_final`, а локально —
+  до двух строк (по оперативным и по окончательным данным, PK `(forecast_id, obs_is_final)`).
+  Если нужны обе оценки, `obs_is_final` придётся включить в ключ.
+- В `rolling_metrics` проекта YDB нет `tss_g2`, а локально он есть; если TSS для порога G2 нужен,
+  колонку надо добавить.
+- В `forecast` YDB нет `features_t` и `feature_set_v` (какая строка признаков использована), а
+  локально они есть; в проекте добавлены `support_n` и `fingerprint_key`.
+- Источники прогноза (`source`) в облаке: `climatology`, `persistence`, `recurrence`, `swpc`, `m0`
+  (перекалибровка внешнего прогноза), `m1`, `m2`; локально — `ml`, `persistence`, `recurrence`,
+  `climatology`, `swpc`.
+- Сумма вероятностей в `distribution` равна 1 с допуском 0,01; это проверяет приложение, схема —
+  нет.
 
 ## Что ещё не сделано
 

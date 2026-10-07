@@ -27,6 +27,13 @@
 
 Подробнее: docs/contracts.md.
 
+## Облачный контур
+
+Целевой запуск — Yandex Cloud без постоянно работающих серверов: Workflows оркестрирует Cloud
+Functions, объёмные данные лежат в Object Storage, оперативное состояние — в YDB. Схема, общие
+правила и лимиты — docs/architecture.md; спецификация суточного воркфлоу —
+deploy/workflows/daily.yaml; таблицы YDB — docs/database.md.
+
 ## Структура
 
 См. docs/architecture.md.

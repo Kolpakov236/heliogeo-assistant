@@ -12,7 +12,7 @@ class AliceLLMProvider(BaseLLMProvider):
     """Провайдер LLM через YandexGPT / Alice API."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        raise LLMError("AliceLLMProvider not implemented yet (task L5)")
+        raise LLMError("AliceLLMProvider not implemented yet (task L5)", kind="config")
 
     def generate(
         self,
@@ -22,4 +22,4 @@ class AliceLLMProvider(BaseLLMProvider):
         max_tokens: int = 2000,
         **kwargs: Any,
     ) -> str:
-        raise LLMError("AliceLLMProvider not implemented yet")
+        raise LLMError("AliceLLMProvider not implemented yet", kind="config")

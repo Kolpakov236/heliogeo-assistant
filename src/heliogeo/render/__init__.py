@@ -30,7 +30,12 @@ def render_product(
     if fmt == "txt":
         return render_txt(product.text, output_path)
     if fmt == "pdf":
-        return render_pdf(product.text, output_path, title=product.metadata.product_type)
+        return render_pdf(
+            product.text,
+            output_path,
+            title=product.metadata.product_type,
+            issued_utc=product.metadata.issued_utc,
+        )
     raise ValueError(f"Unknown format: {fmt!r} (expected 'txt' or 'pdf')")
 
 

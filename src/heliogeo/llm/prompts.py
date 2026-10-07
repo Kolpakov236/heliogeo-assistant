@@ -33,7 +33,7 @@ def load_prompt(name: str) -> str:
     try:
         return _env.get_template(f"{name}.txt").render()
     except TemplateNotFound as e:
-        raise LLMError(f"Prompt not found: {name}") from e
+        raise LLMError(f"Prompt not found: {name}", kind="config") from e
 
 
 def render_prompt(name: str, **variables: Any) -> str:
@@ -52,7 +52,7 @@ def render_prompt(name: str, **variables: Any) -> str:
     try:
         template = _env.get_template(f"{name}.txt")
     except TemplateNotFound as e:
-        raise LLMError(f"Prompt not found: {name}") from e
+        raise LLMError(f"Prompt not found: {name}", kind="config") from e
 
     return template.render(**variables)
 
@@ -78,5 +78,10 @@ def render_prompt_for_payload(
     flat: dict[str, Any] = {"payload_json": payload_json}
     if isinstance(data, dict):
         flat.update(data)
+        # Шапка промпта (ISSUED / VALID UNTIL) — время из payload, а не из системных часов
+        metadata = data.get("metadata")
+        if isinstance(metadata, dict):
+            flat.setdefault("issued_utc", metadata.get("issued_utc"))
+            flat.setdefault("valid_until_utc", metadata.get("valid_until_utc"))
 
     return render_prompt(name, **flat)

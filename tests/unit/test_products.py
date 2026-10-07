@@ -1,5 +1,7 @@
 """Тесты продуктов."""
 
+from datetime import UTC, datetime
+
 import pytest
 
 from heliogeo.llm import MockLLMProvider
@@ -95,3 +97,28 @@ def test_product_metadata_grounding_ok() -> None:
     provider = MockLLMProvider(response="ok")
     product = ICAOBriefProduct().generate(PAYLOAD, provider)
     assert product.metadata.grounding_ok is True
+
+
+# --- Момент выпуска продукта ---
+
+
+def test_product_issue_moment_is_the_payload_moment() -> None:
+    """Выпуск датирован моментом данных: повторный прогон за ту же дату даёт тот же выпуск."""
+    provider = MockLLMProvider(response="ok")
+    product = ICAOBriefProduct().generate(PAYLOAD, provider)
+    assert product.metadata.issued_utc == datetime(2026, 5, 12, tzinfo=UTC)
+
+
+def test_product_without_issue_moment_in_payload_fails_loudly() -> None:
+    """Нет metadata.issued_utc — нет момента выпуска: время не подставляется из часов."""
+    provider = MockLLMProvider(response="ok")
+    with pytest.raises(ValueError, match="metadata.issued_utc"):
+        ICAOBriefProduct().generate({"metadata": {}}, provider)
+
+
+def test_wrap_prefers_an_explicit_issue_moment() -> None:
+    provider = MockLLMProvider(response="ok")
+    product_type = ICAOBriefProduct()
+    result = product_type._generate_via_llm(PAYLOAD, provider)
+    moment = datetime(2026, 9, 1, 12, tzinfo=UTC)
+    assert product_type._wrap(result, issued_utc=moment).metadata.issued_utc == moment

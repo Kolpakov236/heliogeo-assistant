@@ -259,3 +259,46 @@ def test_run_does_not_warn_for_an_archive_date(
 
     assert result.exit_code == 0
     assert "Warning" not in result.output
+
+
+# --- Момент выпуска: время данных, а не системные часы ---
+
+
+def test_to_product_uses_the_moment_of_the_payload() -> None:
+    from heliogeo.cli.commands.run import _to_product
+    from heliogeo.llm import MockLLMProvider, generate_product
+
+    moment = datetime(2026, 9, 1, 12, tzinfo=UTC)
+    payload = UnifiedPayload(metadata=Metadata(issued_utc=moment, valid_until_utc=moment))
+    result = generate_product("icao_brief", payload, MockLLMProvider(response="ok"))
+
+    assert _to_product("icao_brief", result).metadata.issued_utc == moment
+
+
+def test_to_product_without_a_moment_fails_loudly() -> None:
+    from dataclasses import replace
+
+    from heliogeo.cli.commands.run import _to_product
+    from heliogeo.llm import MockLLMProvider, generate_product
+
+    result = generate_product("icao_brief", {"metadata": {}}, MockLLMProvider(response="ok"))
+    with pytest.raises(ValueError, match="issued_utc"):
+        _to_product("icao_brief", replace(result, issued_utc=None))
+
+
+def test_run_failure_prints_the_class_of_the_error(
+    mock_build_payload: MagicMock, tmp_path: Path
+) -> None:
+    """Упавший шаг печатается с классом ошибки: по нему решают, повторять ли шаг."""
+    from heliogeo.extractors.swx.client import SwxClientError
+    from heliogeo.pipeline.builder import BuilderError
+
+    error = BuilderError("Failed to build payload")
+    error.__cause__ = SwxClientError("503", kind="unavailable")
+    mock_build_payload.side_effect = error
+
+    result = runner.invoke(app, ["run", "--product", "icao_brief", "--output", str(tmp_path)])
+
+    assert result.exit_code == 1
+    assert "Pipeline: FAILED" in result.stdout
+    assert "build_payload: Failed to build payload [SOURCE_UNAVAILABLE]" in result.stdout

@@ -43,8 +43,9 @@ def test_load_swpc_prompt() -> None:
 
 def test_load_nonexistent_prompt() -> None:
     """Несуществующий промпт → LLMError."""
-    with pytest.raises(LLMError, match="Prompt not found"):
+    with pytest.raises(LLMError, match="Prompt not found") as caught:
         load_prompt("does_not_exist")
+    assert caught.value.kind == "config"
 
 
 def test_render_prompt_with_vars() -> None:
@@ -92,3 +93,24 @@ def test_payload_json_is_valid_json() -> None:
     assert start != -1 and end != -1
     parsed = json.loads(out[start : end + 1])
     assert "metadata" in parsed
+
+
+def test_render_prompt_for_payload_fills_the_header_from_metadata() -> None:
+    """ISSUED и VALID UNTIL в шапке промпта — время из payload, а не пустые строки."""
+    data = {
+        "metadata": {
+            "issued_utc": "2026-05-12T00:00:00Z",
+            "valid_until_utc": "2026-05-13T12:00:00Z",
+            "generator_version": "1.0",
+        }
+    }
+    out = render_prompt_for_payload("icao_brief", data)
+    assert "ISSUED: 2026-05-12T00:00:00Z" in out
+    assert "VALID UNTIL: 2026-05-13T12:00:00Z" in out
+
+
+def test_render_prompt_for_payload_model_fills_the_header() -> None:
+    now = datetime(2026, 5, 12, tzinfo=UTC)
+    payload = UnifiedPayload(metadata=Metadata(issued_utc=now, valid_until_utc=now))
+    out = render_prompt_for_payload("icao_brief", payload)
+    assert "ISSUED: 2026-05-12T00:00:00" in out

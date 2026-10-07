@@ -1,6 +1,7 @@
 """Генерация продуктов через LLM с обязательным grounding."""
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 from heliogeo.core.logging import get_logger
@@ -22,6 +23,8 @@ class GenerationResult:
         payload_json: JSON-payload, который использовался.
         provider_name: имя провайдера.
         duration_ms: время генерации в мс.
+        issued_utc: момент выпуска — ``metadata.issued_utc`` payload (момент данных, а не системные
+            часы: повторный прогон за ту же дату даёт тот же момент). ``None``, если в payload его нет.
     """
 
     product: str
@@ -31,11 +34,32 @@ class GenerationResult:
     provider_name: str = ""
     duration_ms: int = 0
     metadata: dict[str, Any] = field(default_factory=dict)
+    issued_utc: datetime | None = None
 
     @property
     def ok(self) -> bool:
         """True, если grounding прошёл."""
         return self.grounding.ok
+
+
+def _payload_issued_utc(payload: dict[str, Any] | Any) -> datetime | None:
+    """Момент выпуска из ``metadata.issued_utc`` payload (dict или модель); иначе ``None``."""
+    metadata = (
+        payload.get("metadata") if isinstance(payload, dict) else getattr(payload, "metadata", None)
+    )
+    value = (
+        metadata.get("issued_utc")
+        if isinstance(metadata, dict)
+        else getattr(metadata, "issued_utc", None)
+    )
+    if isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value)
+        except ValueError:
+            return None
+    if isinstance(value, datetime) and value.utcoffset() is not None:
+        return value
+    return None
 
 
 def generate_product(
@@ -104,7 +128,10 @@ def generate_product(
             grounding.summary(),
         )
         if fail_on_grounding:
-            raise LLMError(f"Grounding failed for product {product}: {grounding.summary()}")
+            raise LLMError(
+                f"Grounding failed for product {product}: {grounding.summary()}",
+                kind="validation",
+            )
 
     payload_json = ""
     if hasattr(payload, "model_dump_json"):
@@ -121,6 +148,7 @@ def generate_product(
         payload_json=payload_json,
         provider_name=type(provider).__name__,
         duration_ms=duration_ms,
+        issued_utc=_payload_issued_utc(payload),
     )
 
 

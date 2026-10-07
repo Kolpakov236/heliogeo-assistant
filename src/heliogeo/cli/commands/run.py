@@ -102,7 +102,8 @@ def run(
         typer.secho("Pipeline: FAILED", fg=typer.colors.RED)
         for step in result.steps:
             if not step.ok:
-                typer.echo(f"  {step.name}: {step.error}")
+                label = f" [{step.error_class}]" if step.error_class else ""
+                typer.echo(f"  {step.name}: {step.error}{label}")
         raise typer.Exit(code=1)
 
     typer.secho("Pipeline: OK", fg=typer.colors.GREEN)
@@ -185,11 +186,17 @@ def _get_provider(name: str) -> BaseLLMProvider:
 
 
 def _to_product(name: str, gen_result: GenerationResult) -> Product:
-    """Преобразовать GenerationResult в Product."""
+    """Преобразовать GenerationResult в Product.
+
+    Момент выпуска — момент данных из payload, а не текущее время: повторный прогон за ту же
+    дату даёт тот же выпуск.
+    """
+    if gen_result.issued_utc is None:
+        raise ValueError(f"В payload продукта {name} нет metadata.issued_utc")
     return Product(
         metadata=ProductMetadata(
             product_type=name,
-            issued_utc=datetime.now(UTC),
+            issued_utc=gen_result.issued_utc,
             grounding_ok=gen_result.ok,
             grounding_summary=gen_result.grounding.summary(),
         ),

@@ -42,13 +42,14 @@ def test_generate_product_grounding_fail() -> None:
 def test_generate_product_fail_on_grounding() -> None:
     """fail_on_grounding=True → бросает LLMError."""
     provider = MockLLMProvider(response="Kp observed: 99.9")
-    with pytest.raises(LLMError, match="Grounding failed"):
+    with pytest.raises(LLMError, match="Grounding failed") as caught:
         generate_product(
             "icao_brief",
             _payload(),
             provider,
             fail_on_grounding=True,
         )
+    assert caught.value.kind == "validation"
 
 
 def test_generate_product_provider_error() -> None:
@@ -105,3 +106,35 @@ def test_generate_product_with_dict() -> None:
     result = generate_product("icao_brief", data, provider)
     assert result.ok
     assert "metadata" in result.payload_json
+
+
+# --- Момент выпуска берётся из payload, а не из системных часов ---
+
+
+def test_generation_result_takes_the_issue_moment_from_the_payload_model() -> None:
+    result = generate_product("icao_brief", _payload(), MockLLMProvider(response="ok"))
+    assert result.issued_utc == datetime(2026, 5, 12, tzinfo=UTC)
+
+
+def test_generation_result_takes_the_issue_moment_from_a_dict_payload() -> None:
+    data = {"metadata": {"issued_utc": "2026-05-12T06:30:00Z"}}
+    result = generate_product("icao_brief", data, MockLLMProvider(response="ok"))
+    assert result.issued_utc == datetime(2026, 5, 12, 6, 30, tzinfo=UTC)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"metadata": None},
+        {"metadata": {}},
+        {"metadata": {"issued_utc": "вчера"}},
+        {"metadata": {"issued_utc": "2026-05-12T06:30:00"}},  # без пояса момент неоднозначен
+        {"metadata": {"issued_utc": 12345}},
+    ],
+)
+def test_generation_result_has_no_issue_moment_when_the_payload_does_not_give_one(
+    payload: dict,
+) -> None:
+    result = generate_product("icao_brief", payload, MockLLMProvider(response="ok"))
+    assert result.issued_utc is None

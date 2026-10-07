@@ -1,5 +1,6 @@
 """Тесты рендера TXT и PDF."""
 
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -123,3 +124,32 @@ def test_render_product_pdf_with_path(tmp_path: Path) -> None:
     render_product(product, fmt="pdf", output_path=str(path))
     assert path.exists()
     assert path.stat().st_size > 0
+
+
+# --- Воспроизводимость PDF ---
+
+
+def test_render_pdf_is_reproducible() -> None:
+    """Одинаковые аргументы — одинаковые байты, сколько бы времени ни прошло между вызовами."""
+    moment = datetime(2026, 9, 1, 12, tzinfo=UTC)
+    first = render_pdf("Kp 2.3", title="T", issued_utc=moment)
+    time.sleep(1.1)  # метка времени reportlab имеет точность до секунды
+    assert render_pdf("Kp 2.3", title="T", issued_utc=moment) == first
+
+
+def test_render_pdf_issue_moment_changes_the_document() -> None:
+    first = render_pdf("Kp 2.3", title="T", issued_utc=datetime(2026, 9, 1, 12, tzinfo=UTC))
+    second = render_pdf("Kp 2.3", title="T", issued_utc=datetime(2026, 9, 2, 12, tzinfo=UTC))
+    assert first != second
+
+
+def test_render_pdf_without_issue_moment_has_no_clock_line() -> None:
+    """Без момента выпуска строка с датой не печатается, а часы не читаются."""
+    assert render_pdf("Kp 2.3", title="T") == render_pdf("Kp 2.3", title="T")
+
+
+def test_render_product_pdf_uses_the_issue_moment_of_the_product() -> None:
+    product = _product()
+    assert render_product(product, fmt="pdf") == render_pdf(
+        product.text, title="icao_brief", issued_utc=product.metadata.issued_utc
+    )

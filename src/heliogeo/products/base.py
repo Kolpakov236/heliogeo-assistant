@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
 from heliogeo.llm.base import BaseLLMProvider
@@ -74,11 +74,23 @@ class BaseProduct(ABC):
         result: GenerationResult,
         issued_utc: datetime | None = None,
     ) -> Product:
-        """Обернуть GenerationResult в Product."""
+        """Обернуть GenerationResult в Product.
+
+        Момент выпуска — явный ``issued_utc`` либо ``result.issued_utc`` (момент данных из payload).
+        Системные часы не читаются: иначе повторный прогон за ту же дату давал бы другой выпуск.
+
+        Raises:
+            ValueError: если момент выпуска неоткуда взять (в payload нет ``metadata.issued_utc``).
+        """
+        issued = issued_utc or result.issued_utc
+        if issued is None:
+            raise ValueError(
+                f"Не задан момент выпуска продукта {self.name}: в payload нет metadata.issued_utc"
+            )
         return Product(
             metadata=ProductMetadata(
                 product_type=self.name,
-                issued_utc=issued_utc or datetime.now(UTC),
+                issued_utc=issued,
                 generator_version="1.0",
                 provider_name=result.provider_name,
                 duration_ms=result.duration_ms,

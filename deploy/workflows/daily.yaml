@@ -1,33 +1,343 @@
-workflow:
-  name: heliogeo-daily
-  schedule: "0 */6 * * *"
-  steps:
-    - id: build_payload
-      function: build-payload
-      input: {}
+# WF-DAILY — суточный выпуск бюллетеня. Один запуск = один выпуск.
+#
+# Формат — YaWL 0.1 (Yandex Workflows). Спецификация сверена с документацией формата; запуск на
+# стенде не выполнялся: перед использованием создайте по ней воркфлоу и пройдите три сценария —
+# источник недоступен, модель не отвечает, текст не проходит проверку.
+#
+#   open_run → ingest → normalize → features → forecast → generate → validate → route
+#   route:  pass → deliver → done
+#           repair (один раз) → repair → validate
+#           иначе → fallback → deliver_fallback → done
+#   Отказ generate или validate ведёт в fallback; отказ вычислительных шагов — в fail_run.
+#
+# Запуск. Расписание (cron и часовой пояс) задаётся на самом воркфлоу, а не в этой спецификации, и
+# запускает его без входных данных. Вручную можно передать input = {"date": "YYYY-MM-DD",
+# "run_id": "...", "product": "...", "cfg": "registry/current.json"}; все поля необязательны.
+# Шаг open_run (fn-admin) возвращает run_id, дату и продукт: берёт переданные или выдаёт сам. Это
+# единственное место запуска, где читаются системные часы; остальные шаги берут run_id и дату из
+# состояния, а внутри функций системные часы не читаются.
+# functionId не поддерживает шаблоны, поэтому вместо идентификаторов функций в файле стоят
+# заглушки вида ${FN_INGEST}; их подставляет выкладка (envsubst или templatefile) до создания
+# воркфлоу. Других конструкций со знаком доллара в файле нет, в том числе в комментариях.
+#
+# Правила, на которых построена спецификация:
+#  1. Состояние запуска хранит только ключи объектов и признаки результата (лимит шага — 2 МБ).
+#     Каждый output оставляет в состоянии {ok, attempt, out, error}, где out — ключи в Object
+#     Storage, а не данные. Имена ключей в out у разных функций пути не должны совпадать: они
+#     склеиваются в in следующих шагов.
+#  2. Функция не бросает исключение по бизнес-ошибке, а отвечает {"ok": false, "error":
+#     {"class": ..., "retryable": ..., "message": ...}}. Класс — из закрытого перечня
+#     (heliogeo.pipeline.pipeline.ErrorClass). Платформенные сбои (STEP_TIMEOUT, квота) повторяет
+#     defaultRetryPolicy; коды errorList в YaWL — только из списка кодов сервиса, поэтому собственные
+#     классы в нём использовать нельзя.
+#  3. Повтор по классу — циклом «проверка → пауза → тот же шаг», только если ответ говорит
+#     retryable: true и номер попытки меньше предела. Номер попытки функция возвращает в
+#     metrics.attempt (он же в событии); без него повторов нет — шаг идёт по ветке отказа.
+#  4. Ремонт ровно один раз: repair выставляет repaired: true, а route отправляет в repair
+#     только при repaired != true.
+#  5. Ветка fallback обязательна: если генерация или проверка не удались, выпускается шаблонный
+#     текст из полей payload без участия модели. Пропуск выпуска хуже сухой формулировки.
+#  6. Недоступность источника на этапе ingest не срывает выпуск: после повторов прогон идёт
+#     дальше с тем, что есть, а неполнота попадает в манифест качества и в текст.
 
-    - id: generate_icao
-      function: generate-llm
-      input:
-        product: icao_brief
-        payload: ${build_payload.output}
+yawl: "0.1"
+start: open_run
 
-    - id: grounding_icao
-      function: grounding-check
-      input:
-        payload: ${build_payload.output}
-        text: ${generate_icao.output}
+# Повторы платформы: у шага вышло время или упёрлись в квоту одновременных вызовов.
+defaultRetryPolicy:
+  errorList: [STEP_TIMEOUT, STEP_QUOTA_EXCEEDED]
+  errorListMode: INCLUDE
+  retryCount: 3
+  initialDelay: 5s
+  backoffRate: 2.0
+  maxDelay: 60s
 
-    - id: render_pdf
-      function: render-pdf
-      input:
-        text: ${generate_icao.output}
-        format: pdf
-      condition: ${grounding_icao.output.ok}
+steps:
 
-    - id: deliver
-      function: deliver-telegram
-      input:
-        text: ${generate_icao.output}
-        pdf: ${render_pdf.output}
-      condition: ${grounding_icao.output.ok}
+  # --- 0. open_run: run_id, дата и продукт запуска; по расписанию воркфлоу стартует без входных данных ---
+
+  open_run:
+    functionCall:
+      functionId: ${FN_ADMIN}
+      input: >-
+        {{ {"run_id": (.input.run_id // null), "date": (.input.date // null), "attempt": 1,
+        "action": "open_run", "kind": "daily", "product": (.input.product // null),
+        "in": {}, "cfg": (.input.cfg // "registry/current.json")} }}
+      output: '{{ {"run": {"ok": .ok, "out": .out, "error": .error}} }}'
+      next: open_run_result
+
+  open_run_result:
+    switch:
+      choices:
+        - condition: '{{ .run.ok == true }}'
+          next: ingest
+      default: fail_run
+
+  # --- 1. ingest: скачать продукты за дату в raw; недоступность источника лечится повтором ---
+
+  ingest:
+    functionCall:
+      functionId: ${FN_INGEST}
+      input: >-
+        {{ {"run_id": .run.out.run_id, "date": .run.out.date,
+        "attempt": ((.ingest.attempt // 0) + 1),
+        "in": {},
+        "cfg": (.input.cfg // "registry/current.json")} }}
+      output: '{{ {"ingest": {"ok": .ok, "attempt": .metrics.attempt, "out": .out, "error": .error}} }}'
+      next: ingest_result
+
+  ingest_result:
+    switch:
+      choices:
+        - condition: '{{ .ingest.ok == true }}'
+          next: normalize
+        - condition: '{{ (.ingest.error.retryable == true) and ((.ingest.attempt // 99) < 13) }}'
+          next: ingest_pause
+      default: ingest_failed
+
+  ingest_pause:
+    wait:
+      duration: '{{ ([300, 30 * .ingest.attempt] | min) }}'
+      next: ingest
+
+  # После повторов выпуск не срывается: идём дальше с тем, что есть. Настройки и внутренние
+  # ошибки деградацией не лечатся.
+  ingest_failed:
+    switch:
+      choices:
+        - condition: '{{ .ingest.error.class | IN("SOURCE_UNAVAILABLE", "SOURCE_MALFORMED", "TRANSIENT", "DATA_INSUFFICIENT") }}'
+          next: normalize
+      default: fail_run
+
+  # --- 2. normalize → features → forecast: чистые вычисления, повтор по классу не нужен ---
+
+  normalize:
+    functionCall:
+      functionId: ${FN_NORMALIZE}
+      input: >-
+        {{ {"run_id": .run.out.run_id, "date": .run.out.date,
+        "attempt": ((.normalize.attempt // 0) + 1),
+        "in": (.ingest.out // {}),
+        "cfg": (.input.cfg // "registry/current.json")} }}
+      output: '{{ {"normalize": {"ok": .ok, "attempt": .metrics.attempt, "out": .out, "error": .error}} }}'
+      next: normalize_result
+
+  normalize_result:
+    switch:
+      choices:
+        - condition: '{{ .normalize.ok == true }}'
+          next: features
+      default: fail_run
+
+  features:
+    functionCall:
+      functionId: ${FN_FEATURES}
+      input: >-
+        {{ {"run_id": .run.out.run_id, "date": .run.out.date,
+        "attempt": ((.features.attempt // 0) + 1),
+        "in": (.normalize.out // {}),
+        "cfg": (.input.cfg // "registry/current.json")} }}
+      output: '{{ {"features": {"ok": .ok, "attempt": .metrics.attempt, "out": .out, "error": .error}} }}'
+      next: features_result
+
+  features_result:
+    switch:
+      choices:
+        - condition: '{{ .features.ok == true }}'
+          next: forecast
+      default: fail_run
+
+  forecast:
+    functionCall:
+      functionId: ${FN_FORECAST}
+      input: >-
+        {{ {"run_id": .run.out.run_id, "date": .run.out.date,
+        "attempt": ((.forecast.attempt // 0) + 1),
+        "in": (.features.out // {}),
+        "cfg": (.input.cfg // "registry/current.json")} }}
+      output: '{{ {"forecast": {"ok": .ok, "attempt": .metrics.attempt, "out": .out, "error": .error}} }}'
+      next: forecast_result
+
+  forecast_result:
+    switch:
+      choices:
+        - condition: '{{ .forecast.ok == true }}'
+          next: generate
+      default: fail_run
+
+  # --- 3. generate: payload, запрос к модели, сегменты. Любой отказ → fallback ---
+
+  generate:
+    functionCall:
+      functionId: ${FN_GENERATE}
+      input: >-
+        {{ {"run_id": .run.out.run_id, "date": .run.out.date,
+        "attempt": ((.generate.attempt // 0) + 1), "mode": "llm", "product": .run.out.product,
+        "in": ((.ingest.out // {}) + (.normalize.out // {}) + (.features.out // {}) + (.forecast.out // {})),
+        "cfg": (.input.cfg // "registry/current.json")} }}
+      output: '{{ {"generate": {"ok": .ok, "attempt": .metrics.attempt, "out": .out, "error": .error}} }}'
+      next: generate_result
+      catch:
+        - errorList: [STEP_TIMEOUT, STEP_QUOTA_EXCEEDED, STEP_INTERNAL, FUNCTION_CALL_INVALID_RESPONSE, STEP_INVALID_OUTPUT]
+          output: >-
+            {{ {"generate": {"ok": false, "error": {"class": "INTERNAL", "retryable": false, "message": .message}} } }}
+          next: generate_result
+
+  generate_result:
+    switch:
+      choices:
+        - condition: '{{ .generate.ok == true }}'
+          next: validate
+        - condition: '{{ (.generate.error.retryable == true) and ((.generate.attempt // 99) < 4) }}'
+          next: generate_pause
+      default: fallback
+
+  generate_pause:
+    wait:
+      duration: '{{ ([120, 30 * .generate.attempt] | min) }}'
+      next: generate
+
+  # --- 4. validate: шлюзы проверки. Отдельная функция: отказ проверки не перегенерирует текст ---
+
+  validate:
+    functionCall:
+      functionId: ${FN_VALIDATE}
+      input: >-
+        {{ {"run_id": .run.out.run_id, "date": .run.out.date,
+        "attempt": ((.validate.attempt // 0) + 1),
+        "in": {"payload": .generate.out.payload, "draft": (.repair.out.draft // .generate.out.draft)},
+        "cfg": (.input.cfg // "registry/current.json")} }}
+      output: '{{ {"validate": {"ok": .ok, "attempt": .metrics.attempt, "out": .out, "error": .error}} }}'
+      next: validate_result
+      catch:
+        - errorList: [STEP_TIMEOUT, STEP_QUOTA_EXCEEDED, STEP_INTERNAL, FUNCTION_CALL_INVALID_RESPONSE, STEP_INVALID_OUTPUT]
+          output: >-
+            {{ {"validate": {"ok": false, "error": {"class": "INTERNAL", "retryable": false, "message": .message}} } }}
+          next: validate_result
+
+  validate_result:
+    switch:
+      choices:
+        - condition: '{{ .validate.ok == true }}'
+          next: route
+        - condition: '{{ (.validate.error.retryable == true) and ((.validate.attempt // 99) < 4) }}'
+          next: validate_pause
+      default: fallback
+
+  validate_pause:
+    wait:
+      duration: '{{ ([120, 30 * .validate.attempt] | min) }}'
+      next: validate
+
+  # --- 5. route: вердикт проверки. Ремонт один раз, иначе шаблонный текст ---
+  route:
+    switch:
+      choices:
+        - condition: '{{ .validate.out.verdict == "pass" }}'
+          next: deliver
+        - condition: '{{ (.validate.out.verdict == "repair") and (.repaired != true) }}'
+          next: repair
+      default: fallback
+
+  repair:
+    functionCall:
+      functionId: ${FN_GENERATE}
+      input: >-
+        {{ {"run_id": .run.out.run_id, "date": .run.out.date,
+        "attempt": ((.repair.attempt // 0) + 1), "mode": "repair",
+        "in": {"payload": .generate.out.payload, "draft": .generate.out.draft, "trace": .validate.out.trace},
+        "cfg": (.input.cfg // "registry/current.json")} }}
+      output: '{{ {"repair": {"ok": .ok, "attempt": .metrics.attempt, "out": .out, "error": .error}, "repaired": true} }}'
+      next: repair_result
+      catch:
+        - errorList: [STEP_TIMEOUT, STEP_QUOTA_EXCEEDED, STEP_INTERNAL, FUNCTION_CALL_INVALID_RESPONSE, STEP_INVALID_OUTPUT]
+          output: >-
+            {{ {"repair": {"ok": false, "error": {"class": "INTERNAL", "retryable": false, "message": .message}}, "repaired": true } }}
+          next: repair_result
+
+  repair_result:
+    switch:
+      choices:
+        - condition: '{{ .repair.ok == true }}'
+          next: validate
+      default: fallback
+
+  # --- 6. fallback: шаблонный текст из полей payload, модель не участвует ---
+
+  fallback:
+    functionCall:
+      functionId: ${FN_GENERATE}
+      input: >-
+        {{ {"run_id": .run.out.run_id, "date": .run.out.date,
+        "attempt": ((.fallback.attempt // 0) + 1), "mode": "template", "product": .run.out.product,
+        "in": ((.ingest.out // {}) + (.normalize.out // {}) + (.features.out // {}) + (.forecast.out // {})),
+        "cfg": (.input.cfg // "registry/current.json")} }}
+      output: '{{ {"fallback": {"ok": .ok, "attempt": .metrics.attempt, "out": .out, "error": .error}} }}'
+      next: fallback_result
+
+  fallback_result:
+    switch:
+      choices:
+        - condition: '{{ .fallback.ok == true }}'
+          next: deliver_fallback
+      default: fail_run
+
+  # --- 7. deliver: сборка текста, рендер, доставка. Временные сбои доставки лечатся повтором ---
+
+  deliver:
+    functionCall:
+      functionId: ${FN_RENDER_DELIVER}
+      input: >-
+        {{ {"run_id": .run.out.run_id, "date": .run.out.date,
+        "attempt": ((.deliver.attempt // 0) + 1),
+        "in": {"payload": .generate.out.payload, "draft": (.repair.out.draft // .generate.out.draft), "trace": .validate.out.trace, "verdict": (if .repaired == true then "repaired" else "pass" end)},
+        "cfg": (.input.cfg // "registry/current.json")} }}
+      output: '{{ {"deliver": {"ok": .ok, "attempt": .metrics.attempt, "out": .out, "error": .error}} }}'
+      next: deliver_result
+
+  deliver_result:
+    switch:
+      choices:
+        - condition: '{{ .deliver.ok == true }}'
+          next: done
+        - condition: '{{ (.deliver.error.retryable == true) and ((.deliver.attempt // 99) < 6) }}'
+          next: deliver_pause
+      default: fail_run
+
+  deliver_pause:
+    wait:
+      duration: '{{ ([300, 30 * .deliver.attempt] | min) }}'
+      next: deliver
+
+  deliver_fallback:
+    functionCall:
+      functionId: ${FN_RENDER_DELIVER}
+      input: >-
+        {{ {"run_id": .run.out.run_id, "date": .run.out.date,
+        "attempt": ((.deliver_fallback.attempt // 0) + 1),
+        "in": {"payload": .fallback.out.payload, "draft": .fallback.out.draft, "verdict": "fallback"},
+        "cfg": (.input.cfg // "registry/current.json")} }}
+      output: '{{ {"deliver_fallback": {"ok": .ok, "attempt": .metrics.attempt, "out": .out, "error": .error}} }}'
+      next: deliver_fallback_result
+
+  deliver_fallback_result:
+    switch:
+      choices:
+        - condition: '{{ .deliver_fallback.ok == true }}'
+          next: done
+        - condition: '{{ (.deliver_fallback.error.retryable == true) and ((.deliver_fallback.attempt // 99) < 6) }}'
+          next: deliver_fallback_pause
+      default: fail_run
+
+  deliver_fallback_pause:
+    wait:
+      duration: '{{ ([300, 30 * .deliver_fallback.attempt] | min) }}'
+      next: deliver_fallback
+
+  # --- Завершение ---
+  done:
+    success: {}
+
+  fail_run:
+    fail:
+      errorMessage: '{{ "WF-DAILY " + (.run.out.run_id // "без run_id") + ": выпуск не выполнен" }}'

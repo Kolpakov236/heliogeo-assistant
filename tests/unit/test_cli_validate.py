@@ -20,6 +20,7 @@ def _valid_payload() -> dict:
             "issued_utc": now,
             "valid_until_utc": now,
             "generator_version": "1.0",
+            "source_products": [],
         },
     }
 
@@ -102,7 +103,9 @@ def test_validate_invalid_schema_json_output(tmp_path: Path) -> None:
     parsed = _extract_json(result.stdout)
     assert parsed["ok"] is False
     assert parsed["error_count"] >= 1
-    assert any("metadata" in e["loc"] or "issued_utc" in e["loc"] for e in parsed["errors"])
+    assert any(
+        "metadata" in e["loc"] or "issued_utc" in e["loc"] for e in parsed["errors"]
+    )
 
 
 @pytest.mark.parametrize("path_in_stdin", ["-"])

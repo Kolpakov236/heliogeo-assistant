@@ -1,5 +1,6 @@
 """HTTP-клиент к API 503.ifz.ru/swx."""
 
+import re
 from datetime import UTC, datetime
 from typing import Any
 
@@ -13,6 +14,7 @@ from tenacity import (
 
 from heliogeo.core.config import get_settings
 from heliogeo.core.logging import get_logger
+from heliogeo.utils.validators import DATE_RE, WINDOW_RE
 
 logger = get_logger(__name__)
 
@@ -37,14 +39,16 @@ class SwxClient:
         timeout: float = 30.0,
     ) -> None:
         settings = get_settings()
-        self._base_url = base_url or getattr(settings, "swx_base_url", None) or _DEFAULT_BASE_URL
+        self._base_url = (
+            base_url or getattr(settings, "swx_base_url", None) or _DEFAULT_BASE_URL
+        )
         self._timeout = timeout
 
     def _format_date(self, query_time: datetime | None) -> str:
         """Формат даты: YYYY-MM-DD или 'now'."""
         if query_time is None:
             return "now"
-        return query_time.astimezone(UTC).strftime("%Y-%m-%d")
+        return query_time.strftime("%Y-%m-%d")
 
     @retry(
         retry=retry_if_exception_type((httpx.HTTPError, httpx.TimeoutException)),
@@ -87,7 +91,7 @@ class SwxClient:
         """
         date_str = self._format_date(query_time)
         params: dict[str, Any] = {}
-        if window:
+        if window and WINDOW_RE.fullmatch(window):
             params["window"] = window
         if no_live:
             params["no_live"] = "true"

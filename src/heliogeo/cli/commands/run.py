@@ -12,6 +12,7 @@ from heliogeo.llm.generator import GenerationResult
 from heliogeo.pipeline.pipeline import run_pipeline
 from heliogeo.products.base import Product, ProductMetadata
 from heliogeo.render import render_product
+from heliogeo.utils.validators import validate_date, validate_window
 
 logger = get_logger(__name__)
 
@@ -51,6 +52,24 @@ def run(
         "--fail-on-grounding",
         help="Прервать pipeline при провале grounding",
     ),
+    query_time: str | None = typer.Option(
+        None,
+        "--date",
+        help="Дата. Формат: YYYY-MM-DD",
+        callback=validate_date,
+    ),
+    window: str | None = typer.Option(
+        None,
+        "--window",
+        "-w",
+        help="Окно агрегации: 15m, 1h, 1d",
+        callback=validate_window,
+    ),
+    no_live: bool = typer.Option(
+        False,
+        "--no-live",
+        help="Отключить для времени ближе чем 2 суток к «сейчас» автоматически подмешивать live-данные SWPC",
+    ),
 ) -> None:
     """Прогнать полный pipeline: extract → LLM → render → deliver."""
     products = ["icao_brief", "swpc_discussion"] if "all" in product else product
@@ -63,6 +82,9 @@ def run(
         products=products,
         provider=llm_provider,
         fail_on_grounding=fail_on_grounding,
+        query_time=query_time,
+        window=window,
+        no_live=no_live,
     )
 
     if not result.ok:

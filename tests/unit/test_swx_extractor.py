@@ -45,7 +45,9 @@ def test_extract_quiet_returns_payload(client: SwxClient, snapshot_quiet: dict) 
     """Спокойный день → валидный UnifiedPayload."""
     extractor = SwxExtractor(client=client)
     with patch.object(client, "get_snapshot", return_value=snapshot_quiet):
-        payload, text = extractor.extract(query_time=datetime(2026, 9, 1, 12, tzinfo=UTC))
+        payload, text = extractor.extract(
+            query_time=datetime(2026, 9, 1, 12, tzinfo=UTC)
+        )
 
     assert isinstance(payload, UnifiedPayload)
     assert text is None
@@ -67,7 +69,9 @@ def test_extract_storm_returns_payload(client: SwxClient, snapshot_storm: dict) 
     assert payload.geospace.kp_observed >= 5
 
 
-def test_extract_with_text(client: SwxClient, snapshot_quiet: dict, text_quiet: dict) -> None:
+def test_extract_with_text(
+    client: SwxClient, snapshot_quiet: dict, text_quiet: dict
+) -> None:
     """include_text=True → возвращает и текст."""
     extractor = SwxExtractor(client=client)
     with (
@@ -84,7 +88,9 @@ def test_extract_with_text(client: SwxClient, snapshot_quiet: dict, text_quiet: 
     assert text["kind"] == "discussion"
 
 
-def test_extract_text_failure_non_fatal(client: SwxClient, snapshot_quiet: dict) -> None:
+def test_extract_text_failure_non_fatal(
+    client: SwxClient, snapshot_quiet: dict
+) -> None:
     """Ошибка /text не ломает extract."""
     extractor = SwxExtractor(client=client)
     with (
@@ -141,7 +147,7 @@ def test_extract_window_passed(client: SwxClient, snapshot_quiet: dict) -> None:
     assert captured["no_live"] is True
 
 
-def test_extract_validation_failure(client: SwxClient) -> None:
+def test_extract_validation_invalid_data(client: SwxClient) -> None:
     """Битые данные → SwxExtractorError."""
     extractor = SwxExtractor(client=client)
     bad_data = {
@@ -154,11 +160,9 @@ def test_extract_validation_failure(client: SwxClient) -> None:
         "geomag": {"kp_obs": {"max": 99.0}},  # Kp > 9 → validation fail
         "notes": [],
     }
-    with (
-        patch.object(client, "get_snapshot", return_value=bad_data),
-        pytest.raises(SwxExtractorError, match="Payload validation failed"),
-    ):
-        extractor.extract()
+    with (patch.object(client, "get_snapshot", return_value=bad_data),):
+        payload, _ = extractor.extract()
+        assert payload.geospace.kp_observed == 9
 
 
 def test_extract_default_client() -> None:

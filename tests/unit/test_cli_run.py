@@ -18,7 +18,7 @@ def mock_build_payload():
     """Мокаем build_payload, чтобы тесты не ходили в реальный API."""
     now = datetime(2026, 9, 1, 12, tzinfo=UTC)
     payload = UnifiedPayload(
-        metadata=Metadata(issued_utc=now, valid_until_utc=now),
+        metadata=Metadata(issued_utc=now, valid_until_utc=now, source_products=[]),
     )
     with patch(
         "heliogeo.pipeline.pipeline.build_payload",

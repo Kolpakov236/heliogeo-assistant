@@ -98,6 +98,15 @@
   каждой строки; прогнозные шкалы источника не переносятся. Тесты `test_swx_normalize.py`.
 - Схема L1: `source_path` может быть `None` (значение не из файла), столбец ветра `bt_nt` вместо
   `bt_latest_nt` (смысл поля `imf.bt` источника не подтверждён).
+- Зависимости `pyarrow` и `boto3`; для них в `pyproject.toml` отключена проверка недостающих типов
+  mypy (обращения собраны в `storage/s3.py` и `storage/lake.py`).
+- Parquet-разделы L1 (`heliogeo.storage.lake`): схема файла выводится из схем L1, строки проверяются перед
+  записью, пустой раздел записывается пустым файлом, запись детерминирована, `write_day` не оставляет
+  сутки записанными наполовину. Тесты `test_lake_parquet.py`.
+- Хранилище Object Storage (`heliogeo.storage.s3.S3ObjectStore`, `make_s3_client`): SHA-256 в метаданных
+  объекта, листинг по страницам, три попытки при временных сбоях; тесты на заглушке S3.
+- Выбор хранилища по настройкам (`heliogeo.storage.factory.open_object_store`): настройки `OBJECT_STORE` (`local` /
+  `s3`), `OBJECT_STORE_DIR`, `BUCKET_PREFIX`, `S3_ENDPOINT_URL`, `S3_REGION`; каталог `var/` в `.gitignore`.
 
 ### Changed
 - `Settings` собирает `database_url` из `POSTGRES_*`, если `DATABASE_URL` не задан. В

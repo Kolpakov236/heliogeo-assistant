@@ -2,7 +2,7 @@
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Self
+from typing import Literal, Self
 from urllib.parse import quote
 
 from pydantic import Field, field_validator, model_validator
@@ -56,6 +56,15 @@ class Settings(BaseSettings):
         default="https://503.ifz.ru/swx",
         alias="SWX_BASE_URL",
     )
+    # Хранилище объектов: local — каталог (разработка, тесты), s3 — Yandex Object Storage.
+    # Ключи доступа к S3 сюда не входят: boto3 берёт их из AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY.
+    object_store: Literal["local", "s3"] = Field(default="local", alias="OBJECT_STORE")
+    object_store_dir: Path = Field(
+        default=_PROJECT_ROOT / "var" / "objects", alias="OBJECT_STORE_DIR"
+    )
+    bucket_prefix: str = Field(default="heliogeo", alias="BUCKET_PREFIX")
+    s3_endpoint_url: str = Field(default="https://storage.yandexcloud.net", alias="S3_ENDPOINT_URL")
+    s3_region: str = Field(default="ru-central1", alias="S3_REGION")
     # Контракты: доменные YAML под версионированием (по умолчанию contracts/ в корне репозитория)
     contracts_dir: Path = Field(default=_PROJECT_ROOT / "contracts", alias="CONTRACTS_DIR")
 
@@ -63,9 +72,9 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     tz: str = Field(default="UTC", alias="TZ")
 
-    @field_validator("contracts_dir")
+    @field_validator("contracts_dir", "object_store_dir")
     @classmethod
-    def _resolve_contracts_dir(cls, value: Path) -> Path:
+    def _resolve_relative_dirs(cls, value: Path) -> Path:
         """Относительный путь считается от корня репозитория, а не от текущего каталога."""
         return value if value.is_absolute() else _PROJECT_ROOT / value
 

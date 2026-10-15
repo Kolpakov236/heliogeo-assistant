@@ -50,3 +50,6 @@ htmlcov/
 # PDF / temp
 *.pdf.tmp
 CHALENGELOG.md
+
+# Локальное хранилище объектов (OBJECT_STORE=local)
+var/

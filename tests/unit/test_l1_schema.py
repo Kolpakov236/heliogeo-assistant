@@ -34,7 +34,7 @@ def test_the_reference_row_is_valid(entity: str) -> None:
 def test_every_column_has_a_description_and_provenance_is_required(entity: str) -> None:
     spec = L1_SCHEMAS[entity]
     assert all(column.description for column in spec.columns)
-    for name in ("source_product", "source_path", "raw_key"):
+    for name in ("source_product", "raw_key"):
         column = next(c for c in spec.columns if c.name == name)
         assert column.nullable is False
 

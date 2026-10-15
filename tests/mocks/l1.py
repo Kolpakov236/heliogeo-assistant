@@ -20,7 +20,7 @@ def _provenance(product: str, path: str) -> dict[str, Any]:
     return {"source_product": product, "source_path": path, "raw_key": RAW_KEY}
 
 
-_WAREHOUSE = "/opt/swx/data/warehouse"
+_DATA = "/opt/swx/data"
 
 _EXAMPLES: dict[str, dict[str, Any]] = {
     "active_regions": {
@@ -37,7 +37,7 @@ _EXAMPLES: dict[str, dict[str, Any]] = {
         "growth_status": "continuing",
         "growth_area_delta_msh": 1310,
         "growth_spots_delta": -23,
-        **_provenance("srs", f"{_WAREHOUSE}/srs/2024/20240511SRS.txt"),
+        **_provenance("srs", f"{_DATA}/warehouse/srs/2024/20240511SRS.txt"),
     },
     "flares": {
         "begin_utc": _at(1, 10),
@@ -48,7 +48,7 @@ _EXAMPLES: dict[str, dict[str, Any]] = {
         "location": None,
         "observatory": "G16",
         "radio": ["CTM", "VI", "IV", "II"],
-        **_provenance("events", f"{_WAREHOUSE}/events/2024/20240511events.txt"),
+        **_provenance("events", f"{_DATA}/warehouse/events/2024/20240511events.txt"),
     },
     "cmes": {
         "cme_id": "2024-05-11T01:36:00-CME-001",
@@ -64,7 +64,7 @@ _EXAMPLES: dict[str, dict[str, Any]] = {
         "source_location": "S17W47",
         "active_region": 13664,
         "note": None,
-        **_provenance("donki_cme", f"{_WAREHOUSE}/donki_cme/2024/20240511.json"),
+        **_provenance("donki_cme", f"{_DATA}/donki/cme_2024-05.json"),
     },
     "particles": {
         "electron_gt2mev_fluence_cm2_sr_day": 2350000.0,
@@ -85,7 +85,7 @@ _EXAMPLES: dict[str, dict[str, Any]] = {
         "sep_gt100_event": False,
         "sep_alert_flags": [],
         "sep_note": None,
-        **_provenance("dayind", f"{_WAREHOUSE}/dayind/2024/20240511dayind.txt"),
+        **_provenance("dayind", f"{_DATA}/warehouse/dayind/2024/20240511dayind.txt"),
     },
     "solar_wind": {
         "n_minutes": 1440,
@@ -94,7 +94,7 @@ _EXAMPLES: dict[str, dict[str, Any]] = {
         "speed_max_km_s": 955.0,
         "density_latest_cm3": None,
         "density_avg_cm3": 15.647,
-        "bt_latest_nt": 7.7,
+        "bt_nt": 7.7,
         "bt_avg_nt": 25.749,
         "bz_min_nt": -47.85,
         "bz_max_nt": 18.14,
@@ -102,7 +102,7 @@ _EXAMPLES: dict[str, dict[str, Any]] = {
         "phi_deg": 58.1,
         "sector": "toward",
         "wind_source": "omni_hro_1min",
-        **_provenance("omni_hro_1min", f"{_WAREHOUSE}/omni_hro_1min/2024/omni_min202405.asc"),
+        **_provenance("omni_hro_1min", f"{_DATA}/omni_min/omni_min202405.asc"),
     },
     "geomag_obs": {
         "kp_3h": [9.0, 8.333, 8.333, 9.0, 8.667, 8.333, 7.667, 7.667],
@@ -111,14 +111,17 @@ _EXAMPLES: dict[str, dict[str, Any]] = {
         "kp_source": "gfz",
         "dst_latest_nt": -167.0,
         "dst_min_nt": -406.0,
-        **_provenance("gfz", f"{_WAREHOUSE}/gfz/Kp_ap_Ap_SN_F107_since_1932.txt"),
+        **_provenance("gfz_kp", f"{_DATA}/gfz/Kp_ap_Ap_SN_F107_since_1932.txt"),
     },
     "forecast_ext": {
         "issued_utc": _at(12, 30),
         "r_scale": "R3",
         "s_scale": "S1",
         "g_scale": "G5",
-        **_provenance("three_day_forecast", f"{_WAREHOUSE}/three_day_forecast/2024/20240511.txt"),
+        **_provenance(
+            "three_day_forecast",
+            f"{_DATA}/warehouse/forecast/2024/202405111230three_day_forecast.txt",
+        ),
     },
 }
 

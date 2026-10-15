@@ -69,7 +69,7 @@
 | Функция | Что делает | Где в репозитории |
 |---|---|---|
 | `fn-ingest` | качает продукты за дату в `raw`, пишет манифест | `extractors/swx` (сейчас — клиент снимков), `mirror/` |
-| `fn-normalize` | `raw` → `l1` (Parquet), парсеры источника | `extractors/swx/mapper.py`; перенос парсеров источника — впереди |
+| `fn-normalize` | `raw` → `l1` (Parquet), парсеры источника | `extractors/swx/normalize.py` (ответ → строки L1) и `mapper.py`; перенос парсеров источника — впереди |
 | `fn-features` | `l1` → `l2/features` и `l2/targets` с задержками доступности | `features/`, `contracts/features/specs.yaml` |
 | `fn-forecast` | прогнозы всех источников и моделей, зависимость только numpy | `forecast/` |
 | `fn-generate` | payload, запрос к модели, сегменты | `pipeline/builder.py`, `generation/`, `llm/`, `products/` |

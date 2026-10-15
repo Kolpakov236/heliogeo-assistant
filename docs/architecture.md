@@ -149,7 +149,7 @@
 | Слой | Модуль | Ответственность |
 |------|--------|-----------------|
 | Ядро | core/ | Config, logging |
-| Контракт | schema/ | Pydantic-модели UnifiedPayload |
+| Контракт | schema/ | Pydantic-модели UnifiedPayload; схемы строк слоя L1 (`schema/l1.py`) |
 | Извлечение | extractors/ | Клиент SWX API: типизированные ответы, приведение к моменту запроса, маппинг в payload (`extractors/swx`). Пакеты `influx`, `dav`, `blobs`, `solar`, `technical` — заготовки первоначального замысла, не используются |
 | Оркестрация | pipeline/ | build_payload, run_pipeline (локальный сквозной прогон одним вызовом), классы ошибок шагов |
 | LLM | llm/ | Providers, prompts, grounding |
@@ -258,4 +258,5 @@ Functions (Python), Object Storage, YDB, Yandex Query, Lockbox.
 - [База данных и миграции](database.md)
 - [Контракты](contracts.md)
 - [Факты](facts.md)
+- [Слой L1](lake.md)
 - [Data Sources](data_sources.md)

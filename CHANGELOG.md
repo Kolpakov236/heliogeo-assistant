@@ -86,6 +86,12 @@
   получено по ключу `live/{дата}/{HHMM}/{endpoint}_{окно}_{live|nolive}.json` (`key_raw_snapshot`) и ведёт
   манифест `_manifest/{дата}.json` (хеш, размер, окно, `no_live`, время получения). Повтор тех же байтов ничего не
   меняет; другие байты заменяют объект с предупреждением и следом в манифесте.
+- Схемы нормализованного слоя L1 (`heliogeo.schema.l1`): семь сущностей (`active_regions`, `flares`, `cmes`,
+  `particles`, `solar_wind`, `geomag_obs`, `forecast_ext`), типы столбцов, словарь единиц `UNITS` (единица — суффикс
+  имени столбца), происхождение в каждой строке (`source_product`, `source_path`, `raw_key`), проверка строк
+  `validate_row` / `validate_rows` (тип, диапазон, формат, `None` вместо нуля там, где физический ноль
+  невозможен, уникальность ключа). Эталонные строки `tests/mocks/l1.py`, тесты `test_l1_schema.py`, документ
+  `docs/lake.md`.
 
 ### Changed
 - `Settings` собирает `database_url` из `POSTGRES_*`, если `DATABASE_URL` не задан. В

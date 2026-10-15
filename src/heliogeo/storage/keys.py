@@ -11,9 +11,9 @@
 """
 
 import re
-from datetime import date
+from datetime import UTC, date, datetime
 from enum import StrEnum
-from typing import Final
+from typing import Final, Literal
 
 # Сущности нормализованного слоя L1 (по одной таблице на сущность).
 L1_ENTITIES: Final = (
@@ -122,6 +122,25 @@ def key_raw_live(day: date, hhmm: str, name: str) -> str:
     if not _HHMM.fullmatch(hhmm):
         raise ValueError(f"время снимка должно быть вида HHMM, получено {hhmm!r}")
     return f"live/{day.isoformat()}/{hhmm}/{_segment(name, 'имя снимка')}"
+
+
+def key_raw_snapshot(
+    endpoint: Literal["data", "text"], requested_at: datetime, window: str | None, no_live: bool
+) -> str:
+    """Тело ответа API источника: ``live/{дата}/{HHMM}/{endpoint}_{окно}_{live|nolive}.json``.
+
+    Дата и время — запрошенный момент в UTC. Окно и режим живых данных входят в имя, потому что
+    разные окна и ``no_live`` дают разные ответы на один и тот же момент. У ``text`` окна нет.
+
+    Raises:
+        ValueError: если момент без часового пояса или окно не годится для имени.
+    """
+    if requested_at.tzinfo is None or requested_at.utcoffset() is None:
+        raise ValueError(f"момент запроса должен быть с часовым поясом, получено {requested_at!r}")
+    moment = requested_at.astimezone(UTC)
+    mode = "nolive" if no_live else "live"
+    parts = [endpoint, mode] if endpoint == "text" else [endpoint, window or "ut_day", mode]
+    return key_raw_live(moment.date(), f"{moment:%H%M}", "_".join(parts) + ".json")
 
 
 def key_manifest(day: date) -> str:

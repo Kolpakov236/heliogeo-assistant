@@ -77,6 +77,11 @@
 - Документация: облачный контур в `docs/architecture.md` (хранилища, функции, общие правила,
   лимиты), раздел «Облачный контур: YDB» в `docs/database.md`, раздел «Что известно о данных
   источника» в `docs/data_sources.md` (охват архива, дыры, дефекты разбора трёхдневного прогноза).
+- Ключи Object Storage (`heliogeo.storage.keys`): построители `key_raw_warehouse`, `key_raw_live`,
+  `key_manifest`, `key_l1`, `key_l2`, `key_issue`, `key_artifact`, имена бакетов `bucket_name`; части ключа
+  проверяются и не исправляются молча; разметка `dt=` нигде, кроме построителей, не допускается (тест).
+- Интерфейс хранилища объектов `ObjectStore` и локальная реализация `LocalObjectStore` (`heliogeo.storage.objects`):
+  запись целиком и атомарно, SHA-256 содержимого, листинг по префиксу, защита от выхода за каталог.
 
 ### Changed
 - `Settings` собирает `database_url` из `POSTGRES_*`, если `DATABASE_URL` не задан. В

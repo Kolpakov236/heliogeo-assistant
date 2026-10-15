@@ -107,6 +107,19 @@
   объекта, листинг по страницам, три попытки при временных сбоях; тесты на заглушке S3.
 - Выбор хранилища по настройкам (`heliogeo.storage.factory.open_object_store`): настройки `OBJECT_STORE` (`local` /
   `s3`), `OBJECT_STORE_DIR`, `BUCKET_PREFIX`, `S3_ENDPOINT_URL`, `S3_REGION`; каталог `var/` в `.gitignore`.
+- Рантайм функций (`heliogeo.functions.runtime`): событие `{run_id, date, attempt, in, cfg}`, ответ `{ok, out,
+  metrics, notes}` или `{ok: false, error: {class, retryable, message, detail_key}}`, класс ошибки из `ErrorClass`,
+  предел ответа 256 КБ, номер попытки в `metrics.attempt`; тесты `test_function_runtime.py`.
+- `fn-ingest` (`heliogeo.functions.ingest`): полные сутки (запрос на 23:59 UTC, без live), тела `/data` и `/text`
+  сохраняются в `raw` как получены, манифест за дату, повторный вызов не идёт в сеть, пропуск части данных — `ok`
+  с перечнем в `notes`. `fn-normalize` (`heliogeo.functions.normalize`): сохранённый ответ в семь Parquet-разделов L1.
+  Тесты `test_function_ingest_normalize.py`.
+- Клиент источника: параметр `raw_sink` — тело каждого успешного ответа (прошедшего проверку формы) сохраняется
+  в `raw`, ответ получает `raw_key` и `raw_sha256` (`test_swx_client_raw_sink.py`).
+- Проверка полноты ответа `/data` (`heliogeo.extractors.swx.completeness`): критичные и важные поля, недостающие
+  продукты; `payload_from_response` вынесена из `SwxExtractor.extract` без изменения поведения.
+- `read_range` (`heliogeo.storage.lake`): разделы L1 за период, дыры возвращаются списком. Тест `test_feature_inputs.py`
+  связывает каждый признак `contracts/features/specs.yaml` со столбцами L1 и перечисляет признаки без входа.
 
 ### Changed
 - `Settings` собирает `database_url` из `POSTGRES_*`, если `DATABASE_URL` не задан. В

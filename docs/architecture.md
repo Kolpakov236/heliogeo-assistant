@@ -68,8 +68,8 @@
 
 | Функция | Что делает | Где в репозитории |
 |---|---|---|
-| `fn-ingest` | качает продукты за дату в `raw`, пишет манифест | `extractors/swx` (сейчас — клиент снимков), `mirror/` |
-| `fn-normalize` | `raw` → `l1` (Parquet), парсеры источника | `extractors/swx/normalize.py` (ответ → строки L1) и `mapper.py`; перенос парсеров источника — впереди |
+| `fn-ingest` | качает продукты за дату в `raw`, пишет манифест, проверяет полноту | `functions/ingest.py`, `extractors/swx` (клиент снимков, `completeness.py`), `mirror/` |
+| `fn-normalize` | `raw` → `l1` (Parquet), парсеры источника | `functions/normalize.py`, `extractors/swx/normalize.py` (ответ → строки L1) и `mapper.py`; перенос парсеров источника — впереди |
 | `fn-features` | `l1` → `l2/features` и `l2/targets` с задержками доступности | `features/`, `contracts/features/specs.yaml` |
 | `fn-forecast` | прогнозы всех источников и моделей, зависимость только numpy | `forecast/` |
 | `fn-generate` | payload, запрос к модели, сегменты | `pipeline/builder.py`, `generation/`, `llm/`, `products/` |
@@ -91,6 +91,11 @@
 неполноте данных. Воркфлоу верификации и бэкфилла пока не описаны.
 
 ### Правила, общие для всех функций
+
+Их исполняет `heliogeo.functions.runtime.run`: разбор и проверка события, ответ `{ok, out, metrics,
+notes}` или `{ok: false, error}`, класс ошибки по исключению, предел ответа 256 КБ, номер попытки в
+`metrics.attempt`. Обработчик функции — тонкая точка входа (`heliogeo.functions.<имя>.handler`),
+вся работа лежит в остальных пакетах.
 
 1. **Указатели вместо данных.** Вход функции — `{run_id, date, attempt, in: {ключи}, cfg}`, ответ —
    `{ok, out: {ключи}, metrics, notes}` или `{ok: false, error: {class, retryable, message,
@@ -235,7 +240,7 @@ Functions (Python), Object Storage (boto3), YDB, Yandex Query, Lockbox. Parquet 
 - Grounding обязателен перед доставкой
 - Enlil — анимация, численная интерпретация — TODO
 - VLM для изображений — не используется
-- Облачный контур описан спецификацией воркфлоу, но функции-обработчики, обёртка YDB и перенос
+- Облачный контур описан спецификацией воркфлоу, но обработчики остальных функций, обёртка YDB и перенос
   парсеров источника ещё не написаны; реализация для Object Storage проверена только на заглушке S3, на
   стенде не запускалась; спецификация воркфлоу на стенде не запускалась
 

@@ -12,7 +12,7 @@
 
 import io
 from collections.abc import Mapping, Sequence
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 import pyarrow as pa
@@ -20,7 +20,7 @@ import pyarrow.parquet as pq
 
 from heliogeo.schema.l1 import L1_SCHEMAS, ColumnType, validate_rows
 from heliogeo.storage.keys import key_l1
-from heliogeo.storage.objects import ObjectStore, StoredObject
+from heliogeo.storage.objects import ObjectNotFoundError, ObjectStore, StoredObject
 
 _ARROW_TYPES: dict[ColumnType, pa.DataType] = {
     ColumnType.INT: pa.int64(),
@@ -96,6 +96,31 @@ def read_partition(
     return rows
 
 
+def read_range(
+    store: ObjectStore, entity: str, start: date, end: date
+) -> tuple[dict[date, list[dict[str, Any]]], list[date]]:
+    """Разделы сущности за сутки от ``start`` до ``end`` включительно.
+
+    Дыры не заполняются: сутки без раздела не попадают в словарь и перечислены вторым значением,
+    чтобы признак, которому не хватило истории, знал об этом, а не считал по тому, что есть.
+
+    Raises:
+        ValueError: если ``end`` раньше ``start``.
+        PartitionError: если схема файла одного из разделов не совпадает со схемой сущности.
+    """
+    if end < start:
+        raise ValueError(f"конец периода {end.isoformat()} раньше начала {start.isoformat()}")
+    found: dict[date, list[dict[str, Any]]] = {}
+    missing: list[date] = []
+    for offset in range((end - start).days + 1):
+        day = start + timedelta(days=offset)
+        try:
+            found[day] = read_partition(store, entity, day)
+        except ObjectNotFoundError:
+            missing.append(day)
+    return found, missing
+
+
 def partition_exists(store: ObjectStore, entity: str, day: date, *, part: int = 0) -> bool:
     """Записан ли раздел (в том числе пустой)."""
     return store.head(key_l1(entity, day, part)) is not None
@@ -127,6 +152,7 @@ __all__ = [
     "arrow_schema",
     "partition_exists",
     "read_partition",
+    "read_range",
     "write_day",
     "write_partition",
 ]

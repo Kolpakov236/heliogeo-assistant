@@ -18,6 +18,7 @@ from heliogeo.storage.lake import (
     arrow_schema,
     partition_exists,
     read_partition,
+    read_range,
     write_day,
     write_partition,
 )
@@ -156,3 +157,22 @@ def test_a_normalized_fixture_day_is_written_and_read_back(lake: LocalObjectStor
 
     for entity, rows in part.rows.items():
         assert read_partition(lake, entity, part.day) == list(rows)
+
+
+def test_read_range_returns_days_in_order_and_names_the_gaps(lake: LocalObjectStore) -> None:
+    for day in (date(2024, 5, 9), date(2024, 5, 11)):
+        write_partition(lake, "geomag_obs", day, [make_l1_row("geomag_obs")])
+
+    found, missing = read_range(lake, "geomag_obs", date(2024, 5, 9), date(2024, 5, 12))
+
+    assert list(found) == [date(2024, 5, 9), date(2024, 5, 11)]
+    assert missing == [date(2024, 5, 10), date(2024, 5, 12)]
+    assert found[date(2024, 5, 9)] == [make_l1_row("geomag_obs")]
+
+
+def test_read_range_of_a_single_day_and_of_a_reversed_period(lake: LocalObjectStore) -> None:
+    write_partition(lake, "flares", DAY, [])
+
+    assert read_range(lake, "flares", DAY, DAY) == ({DAY: []}, [])
+    with pytest.raises(ValueError, match="раньше начала"):
+        read_range(lake, "flares", date(2024, 5, 12), DAY)

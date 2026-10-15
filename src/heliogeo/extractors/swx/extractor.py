@@ -25,6 +25,43 @@ class SwxExtractorError(Exception):
     """Ошибка извлечения данных из swx."""
 
 
+def payload_from_response(response: SwxDataResponse) -> UnifiedPayload:
+    """UnifiedPayload из ответа ``/data``: берётся ``response.data``, приведённое к моменту запроса.
+
+    Raises:
+        SwxExtractorError: если собранный payload не проходит схему.
+    """
+    data = response.data
+    snapshot_date = (response.query_time or response.requested_at).date().isoformat()
+    solar_wind_source = (data.get("solar_wind") or {}).get("source", "unknown")
+
+    payload_dict: dict[str, Any] = {
+        "metadata": {
+            "issued_utc": response.query_time,
+            "valid_until_utc": response.window_end or response.query_time,
+            "generator_version": "1.0",
+        },
+        "solar_activity": map_solar_activity(data),
+        "energetic_particles": map_particles(data.get("particles", {})),
+        "solar_wind": map_solar_wind(data.get("solar_wind", {})),
+        "geospace": map_geospace(data.get("geomag", {})),
+        "forecast": map_forecast(data.get("geomag", {})),
+        "images": map_images(None),
+        "technical_issues": map_technical_issues(
+            notes=list(response.notes),
+            solar_wind_source=solar_wind_source,
+            snapshot_date=snapshot_date,
+        ),
+    }
+
+    try:
+        payload = UnifiedPayload.model_validate(payload_dict)
+    except Exception as e:
+        logger.exception("Payload validation failed")
+        raise SwxExtractorError(f"Payload validation failed: {e}") from e
+    return payload
+
+
 class SwxExtractor:
     """Extractor для API 503.ifz.ru/swx.
 
@@ -99,36 +136,7 @@ class SwxExtractor:
                 # Текст — не критичен, логируем и продолжаем
                 logger.warning("Failed to fetch text (non-fatal): %s", e)
 
-        # --- 3. Собрать dict ---
-        data = response.data
-        snapshot_date = (response.query_time or response.requested_at).date().isoformat()
-        solar_wind_source = (data.get("solar_wind") or {}).get("source", "unknown")
-
-        payload_dict: dict[str, Any] = {
-            "metadata": {
-                "issued_utc": response.query_time,
-                "valid_until_utc": response.window_end or response.query_time,
-                "generator_version": "1.0",
-            },
-            "solar_activity": map_solar_activity(data),
-            "energetic_particles": map_particles(data.get("particles", {})),
-            "solar_wind": map_solar_wind(data.get("solar_wind", {})),
-            "geospace": map_geospace(data.get("geomag", {})),
-            "forecast": map_forecast(data.get("geomag", {})),
-            "images": map_images(None),
-            "technical_issues": map_technical_issues(
-                notes=list(response.notes),
-                solar_wind_source=solar_wind_source,
-                snapshot_date=snapshot_date,
-            ),
-        }
-
-        # --- 4. Валидация ---
-        try:
-            payload = UnifiedPayload.model_validate(payload_dict)
-        except Exception as e:
-            logger.exception("Payload validation failed")
-            raise SwxExtractorError(f"Payload validation failed: {e}") from e
+        payload = payload_from_response(response)
 
         logger.info(
             "Extracted payload: %d AR, %d flares, %d CME, Kp=%.1f",

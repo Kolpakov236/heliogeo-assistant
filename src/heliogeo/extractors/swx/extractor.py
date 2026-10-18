@@ -25,6 +25,62 @@ class SwxExtractorError(Exception):
     """Ошибка извлечения данных из swx."""
 
 
+def payload_from_response(response: SwxDataResponse) -> UnifiedPayload:
+    """UnifiedPayload из ответа ``/data``: берётся ``response.data``, приведённое к моменту запроса.
+
+    Raises:
+        SwxExtractorError: если собранный payload не проходит схему.
+    """
+    data = response.data
+    snapshot_date = (response.query_time or response.requested_at).date().isoformat()
+    solar_wind = data.get("solar_wind") or {}
+    solar_wind_source = solar_wind.get("source", "unknown")
+    # Отсортированный список: порядок элементов множества меняется от запуска к запуску
+    # (хэш строк), и повторный прогон за ту же дату давал бы другой payload.
+    source_products = sorted({s["product"] for s in data.get("sources", [])})
+
+    payload_dict: dict[str, Any] = {
+        "metadata": {
+            "issued_utc": response.query_time,
+            "valid_until_utc": response.window_end or response.query_time,
+            "generator_version": "1.0",
+            "source_products": source_products,
+        },
+        "solar_activity": map_solar_activity(data),
+        "energetic_particles": map_particles(data.get("particles", {})),
+        "solar_wind": map_solar_wind(solar_wind),
+        "geospace": map_geospace(data.get("geomag", {})),
+        "forecast": map_forecast(data.get("geomag", {})),
+        "images": map_images(None),
+        "technical_issues": map_technical_issues(
+            notes=list(response.notes),
+            solar_wind_source=solar_wind_source,
+            snapshot_date=snapshot_date,
+            has_l1_rtsw=(solar_wind_source == "rtsw" and bool(solar_wind.get("n_minutes"))),
+            omni_min_downloaded="omni_min" in source_products,
+            forecast_available=("three_day_forecast" in source_products),
+            discussion_available=("discussion" in source_products),
+            donki_lag_days=None,
+            dst_kind=None,
+            active_regions_growth=next(
+                (
+                    r["growth"]["status"]
+                    for r in data.get("active_regions", [])
+                    if r.get("growth", {}).get("status")
+                ),
+                None,
+            ),
+        ),
+    }
+
+    try:
+        payload = UnifiedPayload.model_validate(payload_dict)
+    except Exception as e:
+        logger.exception("Payload validation failed")
+        raise SwxExtractorError(f"Payload validation failed: {e}") from e
+    return payload
+
+
 class SwxExtractor:
     """Extractor для API 503.ifz.ru/swx.
 
@@ -99,57 +155,7 @@ class SwxExtractor:
                 # Текст — не критичен, логируем и продолжаем
                 logger.warning("Failed to fetch text (non-fatal): %s", e)
 
-        # --- 3. Собрать dict ---
-        data = response.data
-        snapshot_date = (response.query_time or response.requested_at).date().isoformat()
-        solar_wind_source = (data.get("solar_wind") or {}).get("source", "unknown")
-        # Отсортированный список: порядок элементов множества меняется от запуска к запуску
-        # (хэш строк), и повторный прогон за ту же дату давал бы другой payload.
-        source_products = sorted({s["product"] for s in data.get("sources", [])})
-        solar_wind = data.get("solar_wind") or {}
-
-        payload_dict: dict[str, Any] = {
-            "metadata": {
-                "issued_utc": response.query_time,
-                "valid_until_utc": response.window_end or response.query_time,
-                "generator_version": "1.0",
-                "source_products": source_products,
-            },
-            "solar_activity": map_solar_activity(data),
-            "energetic_particles": map_particles(data.get("particles", {})),
-            "solar_wind": map_solar_wind(solar_wind),
-            "geospace": map_geospace(data.get("geomag", {})),
-            "forecast": map_forecast(data.get("geomag", {})),
-            "images": map_images(None),
-            "technical_issues": map_technical_issues(
-                notes=list(response.notes),
-                solar_wind_source=solar_wind_source,
-                snapshot_date=snapshot_date,
-                has_l1_rtsw=(
-                    solar_wind_source == "rtsw" and bool(solar_wind.get("n_minutes"))
-                ),
-                omni_min_downloaded="omni_min" in source_products,
-                forecast_available=("three_day_forecast" in source_products),
-                discussion_available=("discussion" in source_products),
-                donki_lag_days=None,
-                dst_kind=None,
-                active_regions_growth=next(
-                    (
-                        r["growth"]["status"]
-                        for r in data.get("active_regions", [])
-                        if r.get("growth", {}).get("status")
-                    ),
-                    None,
-                ),
-            ),
-        }
-
-        # --- 4. Валидация ---
-        try:
-            payload = UnifiedPayload.model_validate(payload_dict)
-        except Exception as e:
-            logger.exception("Payload validation failed")
-            raise SwxExtractorError(f"Payload validation failed: {e}") from e
+        payload = payload_from_response(response)
 
         logger.info(
             "Extracted payload: %d AR, %d flares, %d CME, Kp=%.1f",

@@ -2,8 +2,9 @@
 
 import json
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 import httpx
 from tenacity import (
@@ -20,6 +21,7 @@ from heliogeo.extractors.swx.response import (
     SwxResponseError,
     SwxTextResponse,
 )
+from heliogeo.mirror.raw import RawRecord
 from heliogeo.utils.validators import WINDOW_RE
 
 logger = get_logger(__name__)
@@ -32,6 +34,21 @@ _RETRY_STATUSES = frozenset({408, 429})
 
 
 SwxErrorKind = Literal["unavailable", "not_found", "rejected", "malformed"]
+
+
+class RawSink(Protocol):
+    """Куда клиент сохраняет тело успешного ответа как получено (``RawStore.save_snapshot``)."""
+
+    def __call__(
+        self,
+        *,
+        endpoint: Literal["data", "text"],
+        body: bytes,
+        requested_at: datetime,
+        window: str | None,
+        no_live: bool,
+        fetched_at: datetime,
+    ) -> RawRecord: ...
 
 
 class SwxClientError(Exception):
@@ -82,6 +99,9 @@ class SwxClient:
         timeout: таймаут запроса в секундах.
         clock: источник текущего времени (UTC); подменяется в тестах. Нужен для запроса «сейчас» и
             для ``fetched_at`` ответа.
+        raw_sink: куда сохранять тело каждого успешного ответа. Сохраняются только ответы,
+            прошедшие проверку формы (не страница ошибки); в ответе заполняются ``raw_key`` и
+            ``raw_sha256``. None — ответы не сохраняются.
     """
 
     def __init__(
@@ -90,6 +110,7 @@ class SwxClient:
         timeout: float = 30.0,
         *,
         clock: Callable[[], datetime] = _utc_now,
+        raw_sink: RawSink | None = None,
     ) -> None:
         settings = get_settings()
         self._base_url = (
@@ -97,6 +118,7 @@ class SwxClient:
         )
         self._timeout = timeout
         self._clock = clock
+        self._raw_sink = raw_sink
         # О неизвестном поле ответа предупреждаем один раз за жизнь клиента, а не при каждом запросе.
         self._reported_unknown: set[tuple[str, str]] = set()
 
@@ -229,6 +251,16 @@ class SwxClient:
             )
         except SwxResponseError as exc:
             raise SwxClientError(f"Invalid /data response: {exc}") from exc
+        if self._raw_sink is not None:
+            record = self._raw_sink(
+                endpoint="data",
+                body=body,
+                requested_at=requested_at,
+                window=window,
+                no_live=no_live,
+                fetched_at=fetched_at,
+            )
+            response = replace(response, raw_sha256=record.entry.sha256, raw_key=record.entry.key)
         self._report(response, "/data")
         return response
 
@@ -264,5 +296,15 @@ class SwxClient:
             )
         except SwxResponseError as exc:
             raise SwxClientError(f"Invalid /text response: {exc}") from exc
+        if self._raw_sink is not None:
+            record = self._raw_sink(
+                endpoint="text",
+                body=body,
+                requested_at=requested_at,
+                window=None,
+                no_live=no_live,
+                fetched_at=fetched_at,
+            )
+            response = replace(response, raw_sha256=record.entry.sha256, raw_key=record.entry.key)
         self._report(response, "/text")
         return response

@@ -68,8 +68,8 @@
 
 | Функция | Что делает | Где в репозитории |
 |---|---|---|
-| `fn-ingest` | качает продукты за дату в `raw`, пишет манифест | `extractors/swx` (сейчас — клиент снимков), `mirror/` |
-| `fn-normalize` | `raw` → `l1` (Parquet), парсеры источника | `extractors/swx/mapper.py`; перенос парсеров источника — впереди |
+| `fn-ingest` | качает продукты за дату в `raw`, пишет манифест, проверяет полноту | `functions/ingest.py`, `extractors/swx` (клиент снимков, `completeness.py`), `mirror/` |
+| `fn-normalize` | `raw` → `l1` (Parquet), парсеры источника | `functions/normalize.py`, `extractors/swx/normalize.py` (ответ → строки L1) и `mapper.py`; перенос парсеров источника — впереди |
 | `fn-features` | `l1` → `l2/features` и `l2/targets` с задержками доступности | `features/`, `contracts/features/specs.yaml` |
 | `fn-forecast` | прогнозы всех источников и моделей, зависимость только numpy | `forecast/` |
 | `fn-generate` | payload, запрос к модели, сегменты | `pipeline/builder.py`, `generation/`, `llm/`, `products/` |
@@ -91,6 +91,11 @@
 неполноте данных. Воркфлоу верификации и бэкфилла пока не описаны.
 
 ### Правила, общие для всех функций
+
+Их исполняет `heliogeo.functions.runtime.run`: разбор и проверка события, ответ `{ok, out, metrics,
+notes}` или `{ok: false, error}`, класс ошибки по исключению, предел ответа 256 КБ, номер попытки в
+`metrics.attempt`. Обработчик функции — тонкая точка входа (`heliogeo.functions.<имя>.handler`),
+вся работа лежит в остальных пакетах.
 
 1. **Указатели вместо данных.** Вход функции — `{run_id, date, attempt, in: {ключи}, cfg}`, ответ —
    `{ok, out: {ключи}, metrics, notes}` или `{ok: false, error: {class, retryable, message,
@@ -149,14 +154,14 @@
 | Слой | Модуль | Ответственность |
 |------|--------|-----------------|
 | Ядро | core/ | Config, logging |
-| Контракт | schema/ | Pydantic-модели UnifiedPayload |
+| Контракт | schema/ | Pydantic-модели UnifiedPayload; схемы строк слоя L1 (`schema/l1.py`) |
 | Извлечение | extractors/ | Клиент SWX API: типизированные ответы, приведение к моменту запроса, маппинг в payload (`extractors/swx`). Пакеты `influx`, `dav`, `blobs`, `solar`, `technical` — заготовки первоначального замысла, не используются |
 | Оркестрация | pipeline/ | build_payload, run_pipeline (локальный сквозной прогон одним вызовом), классы ошибок шагов |
 | LLM | llm/ | Providers, prompts, grounding |
 | Продукты | products/ | ICAO, SWPC, simplified |
 | Контракты | contracts/ (данные), heliogeo/contracts/ (код) | Версионируемые YAML под подписью эксперта: реестр фактов, словарь терминов, пороги, спецификации признаков |
-| Хранилище | storage/ | Локальная PostgreSQL для разработки и тестов: подключение, ORM-модели (логическая схема, эталон для YDB); миграции — migrations/ |
-| Сырьё | mirror/ | Ответы и файлы источника как получены; повторный запрос не идёт в сеть. В облаке — бакет `raw` |
+| Хранилище | storage/ | Локальная PostgreSQL для разработки и тестов: подключение, ORM-модели (логическая схема, эталон для YDB); миграции — migrations/. Для облака: построители ключей Object Storage (`keys.py`) и интерфейс хранилища объектов с локальной (`objects.py`) и S3-реализацией для Object Storage (`s3.py`), выбор по настройкам (`factory.py`), Parquet-разделы L1 (`lake.py`) |
+| Сырьё | mirror/ | Ответы и файлы источника как получены; повторный запрос не идёт в сеть. Запись и манифест за дату — `mirror/raw.py` (пока для тел ответов `/data` и `/text`). В облаке — бакет `raw` |
 | Факты | facts/ | Единственный источник значений: значение + происхождение + качество + политика отображения |
 | Признаки | features/ | Признаки для прогнозных моделей строго на момент времени |
 | Прогноз | forecast/ | Вероятностные прогнозы, базовые модели, калибровка |
@@ -227,7 +232,9 @@
 
 Python 3.11+, Pydantic 2.x, Typer 0.12, pytest 8.x, ruff 0.4, mypy strict. Локально: PostgreSQL 17
 (docker compose), SQLAlchemy 2.x, Alembic, psycopg 3. Облако: Yandex Workflows (YaWL), Cloud
-Functions (Python), Object Storage, YDB, Yandex Query, Lockbox.
+Functions (Python), Object Storage (boto3), YDB, Yandex Query, Lockbox. Parquet — pyarrow; тяжёлые зависимости
+подключаются только там, где нужны (`heliogeo.storage.lake`), поэтому функциям, которым Parquet не нужен,
+он не попадает в пакет.
 
 ## Ограничения
 
@@ -235,9 +242,9 @@ Functions (Python), Object Storage, YDB, Yandex Query, Lockbox.
 - Grounding обязателен перед доставкой
 - Enlil — анимация, численная интерпретация — TODO
 - VLM для изображений — не используется
-- Облачный контур описан спецификацией воркфлоу, но функции-обработчики, обёртки над Object Storage
-  и YDB и перенос парсеров источника ещё не написаны; спецификация воркфлоу на стенде не
-  запускалась
+- Облачный контур описан спецификацией воркфлоу, но обработчики остальных функций, обёртка YDB и перенос
+  парсеров источника ещё не написаны; реализация для Object Storage проверена только на заглушке S3, на
+  стенде не запускалась; спецификация воркфлоу на стенде не запускалась
 
 ## Roadmap
 
@@ -260,4 +267,5 @@ Functions (Python), Object Storage, YDB, Yandex Query, Lockbox.
 - [База данных и миграции](database.md)
 - [Контракты](contracts.md)
 - [Факты](facts.md)
+- [Слой L1](lake.md)
 - [Data Sources](data_sources.md)

@@ -77,6 +77,49 @@
 - Документация: облачный контур в `docs/architecture.md` (хранилища, функции, общие правила,
   лимиты), раздел «Облачный контур: YDB» в `docs/database.md`, раздел «Что известно о данных
   источника» в `docs/data_sources.md` (охват архива, дыры, дефекты разбора трёхдневного прогноза).
+- Ключи Object Storage (`heliogeo.storage.keys`): построители `key_raw_warehouse`, `key_raw_live`,
+  `key_manifest`, `key_l1`, `key_l2`, `key_issue`, `key_artifact`, имена бакетов `bucket_name`; части ключа
+  проверяются и не исправляются молча; разметка `dt=` нигде, кроме построителей, не допускается (тест).
+- Интерфейс хранилища объектов `ObjectStore` и локальная реализация `LocalObjectStore` (`heliogeo.storage.objects`):
+  запись целиком и атомарно, SHA-256 содержимого, листинг по префиксу, защита от выхода за каталог.
+- Запись сырья (`heliogeo.mirror.raw`): `RawStore.save_snapshot` сохраняет тело ответа `/data` или `/text` байтами как
+  получено по ключу `live/{дата}/{HHMM}/{endpoint}_{окно}_{live|nolive}.json` (`key_raw_snapshot`) и ведёт
+  манифест `_manifest/{дата}.json` (хеш, размер, окно, `no_live`, время получения). Повтор тех же байтов ничего не
+  меняет; другие байты заменяют объект с предупреждением и следом в манифесте.
+- Схемы нормализованного слоя L1 (`heliogeo.schema.l1`): семь сущностей (`active_regions`, `flares`, `cmes`,
+  `particles`, `solar_wind`, `geomag_obs`, `forecast_ext`), типы столбцов, словарь единиц `UNITS` (единица — суффикс
+  имени столбца), происхождение в каждой строке (`source_product`, `source_path`, `raw_key`), проверка строк
+  `validate_row` / `validate_rows` (тип, диапазон, формат, `None` вместо нуля там, где физический ноль
+  невозможен, уникальность ключа). Эталонные строки `tests/mocks/l1.py`, тесты `test_l1_schema.py`, документ
+  `docs/lake.md`.
+- Нормализация ответа `/data` в строки L1 (`heliogeo.extractors.swx.normalize.normalize_response`):
+  раздел — полные сутки (неполные отвергаются `NormalizeError`), `None` вместо подмены нулём и значениями
+  по умолчанию, строка либо проходит схему, либо отбрасывается с записью в `problems`, происхождение
+  каждой строки; прогнозные шкалы источника не переносятся. Тесты `test_swx_normalize.py`.
+- Схема L1: `source_path` может быть `None` (значение не из файла), столбец ветра `bt_nt` вместо
+  `bt_latest_nt` (смысл поля `imf.bt` источника не подтверждён).
+- Зависимости `pyarrow` и `boto3`; для них в `pyproject.toml` отключена проверка недостающих типов
+  mypy (обращения собраны в `storage/s3.py` и `storage/lake.py`).
+- Parquet-разделы L1 (`heliogeo.storage.lake`): схема файла выводится из схем L1, строки проверяются перед
+  записью, пустой раздел записывается пустым файлом, запись детерминирована, `write_day` не оставляет
+  сутки записанными наполовину. Тесты `test_lake_parquet.py`.
+- Хранилище Object Storage (`heliogeo.storage.s3.S3ObjectStore`, `make_s3_client`): SHA-256 в метаданных
+  объекта, листинг по страницам, три попытки при временных сбоях; тесты на заглушке S3.
+- Выбор хранилища по настройкам (`heliogeo.storage.factory.open_object_store`): настройки `OBJECT_STORE` (`local` /
+  `s3`), `OBJECT_STORE_DIR`, `BUCKET_PREFIX`, `S3_ENDPOINT_URL`, `S3_REGION`; каталог `var/` в `.gitignore`.
+- Рантайм функций (`heliogeo.functions.runtime`): событие `{run_id, date, attempt, in, cfg}`, ответ `{ok, out,
+  metrics, notes}` или `{ok: false, error: {class, retryable, message, detail_key}}`, класс ошибки из `ErrorClass`,
+  предел ответа 256 КБ, номер попытки в `metrics.attempt`; тесты `test_function_runtime.py`.
+- `fn-ingest` (`heliogeo.functions.ingest`): полные сутки (запрос на 23:59 UTC, без live), тела `/data` и `/text`
+  сохраняются в `raw` как получены, манифест за дату, повторный вызов не идёт в сеть, пропуск части данных — `ok`
+  с перечнем в `notes`. `fn-normalize` (`heliogeo.functions.normalize`): сохранённый ответ в семь Parquet-разделов L1.
+  Тесты `test_function_ingest_normalize.py`.
+- Клиент источника: параметр `raw_sink` — тело каждого успешного ответа (прошедшего проверку формы) сохраняется
+  в `raw`, ответ получает `raw_key` и `raw_sha256` (`test_swx_client_raw_sink.py`).
+- Проверка полноты ответа `/data` (`heliogeo.extractors.swx.completeness`): критичные и важные поля, недостающие
+  продукты; `payload_from_response` вынесена из `SwxExtractor.extract` без изменения поведения.
+- `read_range` (`heliogeo.storage.lake`): разделы L1 за период, дыры возвращаются списком. Тест `test_feature_inputs.py`
+  связывает каждый признак `contracts/features/specs.yaml` со столбцами L1 и перечисляет признаки без входа.
 - Извлечение суточных наблюдений `heliogeo.features.daily.extract_observation_daily`: ответ
   источника (`SwxDataResponse.data`) → колонки `observation_daily`. Kp берётся из `geomag.kp_obs`
   (8 значений), выбросы делятся на «к Земле / мимо / направление не определено» (`earth_directed

@@ -30,7 +30,7 @@ def _stable_payload() -> UnifiedPayload:
     """Стабильный payload для тестов."""
     now = datetime(2026, 9, 1, 12, tzinfo=UTC)
     return UnifiedPayload(
-        metadata=Metadata(issued_utc=now, valid_until_utc=now),
+        metadata=Metadata(issued_utc=now, valid_until_utc=now, source_products=[]),
     )
 
 
@@ -75,7 +75,9 @@ def test_build_payload_safe_with_mock() -> None:
     """build_payload_safe возвращает dict с mock-экстрактором."""
     mock_extractor = MagicMock()
     mock_payload = MagicMock()
-    mock_payload.model_dump.return_value = {"metadata": {"issued_utc": "2026-09-01T12:00:00Z"}}
+    mock_payload.model_dump.return_value = {
+        "metadata": {"issued_utc": "2026-09-01T12:00:00Z"}
+    }
     mock_extractor.extract.return_value = (mock_payload, None)
 
     with patch(
@@ -95,11 +97,11 @@ def test_build_payload_safe_forwards_moment_and_no_live() -> None:
     with patch(
         "heliogeo.pipeline.pipeline.build_payload", return_value=_stable_payload()
     ) as builder:
-        payload, error = build_payload_safe(query_time=moment, no_live=True)
+        payload, error = build_payload_safe(query_time=moment, window="1h", no_live=True)
 
     assert error is None
     assert payload is not None
-    builder.assert_called_once_with(query_time=moment, no_live=True)
+    builder.assert_called_once_with(query_time=moment, window="1h", no_live=True)
 
 
 def test_build_payload_safe_defaults_mean_now_with_live_data() -> None:
@@ -108,7 +110,7 @@ def test_build_payload_safe_defaults_mean_now_with_live_data() -> None:
     ) as builder:
         build_payload_safe()
 
-    builder.assert_called_once_with(query_time=None, no_live=False)
+    builder.assert_called_once_with(query_time=None, window=None, no_live=False)
 
 
 # --- run_pipeline (с mock-билдером) ---
@@ -124,11 +126,12 @@ def test_run_pipeline_forwards_moment_and_no_live() -> None:
             products=["icao_brief"],
             provider=_mock_provider(),
             query_time=moment,
+            window="15m",
             no_live=True,
         )
 
     assert result.ok
-    builder.assert_called_once_with(query_time=moment, no_live=True)
+    builder.assert_called_once_with(query_time=moment, window="15m", no_live=True)
 
 
 def test_run_pipeline_defaults_mean_now_with_live_data() -> None:
@@ -137,7 +140,7 @@ def test_run_pipeline_defaults_mean_now_with_live_data() -> None:
     ) as builder:
         run_pipeline(products=["icao_brief"], provider=_mock_provider())
 
-    builder.assert_called_once_with(query_time=None, no_live=False)
+    builder.assert_called_once_with(query_time=None, window=None, no_live=False)
 
 
 def test_run_pipeline_reports_a_failed_build_with_a_naive_moment() -> None:

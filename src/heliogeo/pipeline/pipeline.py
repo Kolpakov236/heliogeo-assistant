@@ -166,6 +166,7 @@ def get_provider(name: str | None = None) -> BaseLLMProvider:
 
 def build_payload_safe(
     query_time: datetime | None = None,
+    window: str | None = None,
     no_live: bool = False,
 ) -> tuple[dict[str, Any] | None, str | None]:
     """Собрать payload. Возвращает (payload, error).
@@ -175,19 +176,21 @@ def build_payload_safe(
     Args:
         query_time: момент UTC с часовым поясом. None → «сейчас» по часам клиента источника
             (пайплайн системных часов не читает).
+        window: окно агрегации (15m, 1h, 1d). None → сутки UTC.
         no_live: не подмешивать live-данные SWPC (для воспроизводимых прогонов по архиву).
     """
-    payload, error = _build_payload(query_time, no_live)
+    payload, error = _build_payload(query_time, window, no_live)
     return payload, None if error is None else str(error)
 
 
 def _build_payload(
     query_time: datetime | None,
+    window: str | None,
     no_live: bool,
 ) -> tuple[dict[str, Any] | None, Exception | None]:
     """Собрать payload; вместо исключения возвращается оно само — по нему определяется класс."""
     try:
-        payload = build_payload(query_time=query_time, no_live=no_live)
+        payload = build_payload(query_time=query_time, window=window, no_live=no_live)
         if hasattr(payload, "model_dump"):
             return payload.model_dump(mode="json"), None
         if isinstance(payload, dict):
@@ -215,6 +218,7 @@ def run_pipeline(
     fail_on_grounding: bool = False,
     deliver: bool = False,
     query_time: datetime | None = None,
+    window: str | None = None,
     no_live: bool = False,
 ) -> PipelineResult:
     """Прогнать пайплайн: build → generate → grounding → (render → deliver).
@@ -226,6 +230,7 @@ def run_pipeline(
         deliver: если True — вызвать delivery (пока заглушка).
         query_time: момент данных UTC с часовым поясом. None → «сейчас» по часам клиента
             источника (пайплайн системных часов не читает).
+        window: окно агрегации (15m, 1h, 1d). None → сутки UTC.
         no_live: не подмешивать live-данные SWPC (для воспроизводимых прогонов по архиву).
 
     Returns:
@@ -238,7 +243,7 @@ def run_pipeline(
 
     # --- Шаг 1: build payload ---
     t0 = time.monotonic()
-    payload, build_error = _build_payload(query_time, no_live)
+    payload, build_error = _build_payload(query_time, window, no_live)
     duration = int((time.monotonic() - t0) * 1000)
 
     if build_error is not None or payload is None:

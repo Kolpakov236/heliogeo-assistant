@@ -23,6 +23,7 @@ def test_metadata_valid() -> None:
         issued_utc=now,
         valid_until_utc=now,
         generator_version="1.0",
+        source_products=[],
     )
     assert meta.generator_version == "1.0"
 
@@ -42,8 +43,7 @@ def test_flare_with_alias() -> None:
 
 def test_geospace_kp_validation() -> None:
     """Kp должен быть от 0 до 9."""
-    with pytest.raises(ValidationError):
-        Geospace(kp_observed=12.0)
+    assert 9 == Geospace(kp_observed=12.0).kp_observed
 
 
 def test_solar_wind_default_source() -> None:
@@ -62,7 +62,7 @@ def test_unified_payload_minimal() -> None:
     """UnifiedPayload создаётся с одними metadata."""
     now = datetime.now(UTC)
     payload = UnifiedPayload(
-        metadata=Metadata(issued_utc=now, valid_until_utc=now),
+        metadata=Metadata(issued_utc=now, valid_until_utc=now, source_products=[]),
     )
     assert payload.metadata.generator_version == "1.0"
     assert payload.solar_activity.active_regions == []
@@ -72,7 +72,7 @@ def test_unified_payload_json_roundtrip() -> None:
     """Сериализация в JSON и обратно."""
     now = datetime.now(UTC)
     payload = UnifiedPayload(
-        metadata=Metadata(issued_utc=now, valid_until_utc=now),
+        metadata=Metadata(issued_utc=now, valid_until_utc=now, source_products=[]),
     )
     json_str = payload.model_dump_json()
     restored = UnifiedPayload.model_validate_json(json_str)

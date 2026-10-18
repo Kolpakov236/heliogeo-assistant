@@ -19,7 +19,7 @@ def mock_build_payload():
     """Мокаем build_payload, чтобы тесты не ходили в реальный API."""
     now = datetime(2026, 9, 1, 12, tzinfo=UTC)
     payload = UnifiedPayload(
-        metadata=Metadata(issued_utc=now, valid_until_utc=now),
+        metadata=Metadata(issued_utc=now, valid_until_utc=now, source_products=[]),
     )
     with patch(
         "heliogeo.pipeline.pipeline.build_payload",
@@ -160,7 +160,7 @@ def test_run_without_date_asks_for_now_with_live_data(
     result = _run_with(tmp_path)
 
     assert result.exit_code == 0
-    mock_build_payload.assert_called_once_with(query_time=None, no_live=False)
+    mock_build_payload.assert_called_once_with(query_time=None, window=None, no_live=False)
     assert "Warning" not in result.output
 
 
@@ -168,7 +168,27 @@ def test_run_no_live_alone_keeps_now(tmp_path: Path, mock_build_payload: MagicMo
     result = _run_with(tmp_path, "--no-live")
 
     assert result.exit_code == 0
-    mock_build_payload.assert_called_once_with(query_time=None, no_live=True)
+    mock_build_payload.assert_called_once_with(query_time=None, window=None, no_live=True)
+
+
+@pytest.mark.parametrize("flag", ["--window", "-w"])
+def test_run_window_is_forwarded(
+    tmp_path: Path, mock_build_payload: MagicMock, flag: str
+) -> None:
+    result = _run_with(tmp_path, flag, "1h", "--no-live")
+
+    assert result.exit_code == 0, result.output
+    mock_build_payload.assert_called_once_with(query_time=None, window="1h", no_live=True)
+
+
+@pytest.mark.parametrize("window", ["5x", "h", "1 h", "1h30m"])
+def test_run_bad_window_is_rejected(
+    tmp_path: Path, mock_build_payload: MagicMock, window: str
+) -> None:
+    result = _run_with(tmp_path, "--window", window)
+
+    assert result.exit_code != 0
+    mock_build_payload.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -191,7 +211,7 @@ def test_run_date_is_parsed_to_utc(
     result = _run_with(tmp_path, "--date", argument, "--no-live")
 
     assert result.exit_code == 0, result.output
-    mock_build_payload.assert_called_once_with(query_time=expected, no_live=True)
+    mock_build_payload.assert_called_once_with(query_time=expected, window=None, no_live=True)
 
 
 @pytest.mark.parametrize(
@@ -269,7 +289,9 @@ def test_to_product_uses_the_moment_of_the_payload() -> None:
     from heliogeo.llm import MockLLMProvider, generate_product
 
     moment = datetime(2026, 9, 1, 12, tzinfo=UTC)
-    payload = UnifiedPayload(metadata=Metadata(issued_utc=moment, valid_until_utc=moment))
+    payload = UnifiedPayload(
+        metadata=Metadata(issued_utc=moment, valid_until_utc=moment, source_products=[])
+    )
     result = generate_product("icao_brief", payload, MockLLMProvider(response="ok"))
 
     assert _to_product("icao_brief", result).metadata.issued_utc == moment

@@ -103,16 +103,21 @@ class SwxExtractor:
         data = response.data
         snapshot_date = (response.query_time or response.requested_at).date().isoformat()
         solar_wind_source = (data.get("solar_wind") or {}).get("source", "unknown")
+        # Отсортированный список: порядок элементов множества меняется от запуска к запуску
+        # (хэш строк), и повторный прогон за ту же дату давал бы другой payload.
+        source_products = sorted({s["product"] for s in data.get("sources", [])})
+        solar_wind = data.get("solar_wind") or {}
 
         payload_dict: dict[str, Any] = {
             "metadata": {
                 "issued_utc": response.query_time,
                 "valid_until_utc": response.window_end or response.query_time,
                 "generator_version": "1.0",
+                "source_products": source_products,
             },
             "solar_activity": map_solar_activity(data),
             "energetic_particles": map_particles(data.get("particles", {})),
-            "solar_wind": map_solar_wind(data.get("solar_wind", {})),
+            "solar_wind": map_solar_wind(solar_wind),
             "geospace": map_geospace(data.get("geomag", {})),
             "forecast": map_forecast(data.get("geomag", {})),
             "images": map_images(None),
@@ -120,6 +125,22 @@ class SwxExtractor:
                 notes=list(response.notes),
                 solar_wind_source=solar_wind_source,
                 snapshot_date=snapshot_date,
+                has_l1_rtsw=(
+                    solar_wind_source == "rtsw" and bool(solar_wind.get("n_minutes"))
+                ),
+                omni_min_downloaded="omni_min" in source_products,
+                forecast_available=("three_day_forecast" in source_products),
+                discussion_available=("discussion" in source_products),
+                donki_lag_days=None,
+                dst_kind=None,
+                active_regions_growth=next(
+                    (
+                        r["growth"]["status"]
+                        for r in data.get("active_regions", [])
+                        if r.get("growth", {}).get("status")
+                    ),
+                    None,
+                ),
             ),
         }
 

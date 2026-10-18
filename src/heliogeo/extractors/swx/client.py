@@ -20,6 +20,7 @@ from heliogeo.extractors.swx.response import (
     SwxResponseError,
     SwxTextResponse,
 )
+from heliogeo.utils.validators import WINDOW_RE
 
 logger = get_logger(__name__)
 
@@ -91,7 +92,9 @@ class SwxClient:
         clock: Callable[[], datetime] = _utc_now,
     ) -> None:
         settings = get_settings()
-        self._base_url = base_url or getattr(settings, "swx_base_url", None) or _DEFAULT_BASE_URL
+        self._base_url = (
+            base_url or getattr(settings, "swx_base_url", None) or _DEFAULT_BASE_URL
+        )
         self._timeout = timeout
         self._clock = clock
         # О неизвестном поле ответа предупреждаем один раз за жизнь клиента, а не при каждом запросе.
@@ -207,7 +210,7 @@ class SwxClient:
         """
         requested_at = self.resolve_moment(query_time)
         params: dict[str, Any] = {}
-        if window:
+        if window and WINDOW_RE.fullmatch(window):
             params["window"] = window
         if no_live:
             params["no_live"] = "true"

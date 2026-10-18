@@ -16,7 +16,7 @@ from heliogeo.schema import Metadata, UnifiedPayload
 def _payload() -> UnifiedPayload:
     now = datetime(2026, 5, 12, tzinfo=UTC)
     return UnifiedPayload(
-        metadata=Metadata(issued_utc=now, valid_until_utc=now),
+        metadata=Metadata(issued_utc=now, valid_until_utc=now, source_products=[]),
     )
 
 

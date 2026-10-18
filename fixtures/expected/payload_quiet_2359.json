@@ -31,6 +31,19 @@
   "metadata": {
     "generator_version": "1.0",
     "issued_utc": "2026-09-01T12:00:00Z",
+    "source_products": [
+      "dayind",
+      "daypre",
+      "donki_cme",
+      "donki_cmeanalysis",
+      "events",
+      "gfz_kp",
+      "goes_nc_sgps",
+      "omni2",
+      "omni_hro_1min",
+      "srs",
+      "three_day_forecast"
+    ],
     "valid_until_utc": "2026-09-01T23:59:59Z"
   },
   "solar_activity": {
@@ -185,5 +198,5 @@
     "speed_min": 347.9,
     "temperature": null
   },
-  "technical_issues": "Solar wind source: omni_hro_1min (OMNI bow shock nose, not L1) | Proton >10 MeV: SGPS channels sum, not SWPC operational"
+  "technical_issues": "Proton >10 MeV: SGPS channels sum, not SWPC operational | Solar wind source: omni_hro_1min | 1-min RTSW available only as live (recent hours/day); history via OMNI HRO 1-min or OMNI2 1-hour | OMNI HRO shifted to subsolar bow shock nose (not raw DSCOVR/ACE) | Forecast Discussion: live discussion.txt used (no archived issue for today yet)"
 }

@@ -13,6 +13,7 @@ from heliogeo.llm.generator import GenerationResult
 from heliogeo.pipeline.pipeline import run_pipeline
 from heliogeo.products.base import Product, ProductMetadata
 from heliogeo.render import render_product
+from heliogeo.utils.validators import validate_window
 
 logger = get_logger(__name__)
 
@@ -66,6 +67,13 @@ def run(
             "По умолчанию — сейчас."
         ),
     ),
+    window: str | None = typer.Option(
+        None,
+        "--window",
+        "-w",
+        help="Окно агрегации: 15m, 1h, 1d",
+        callback=validate_window,
+    ),
     no_live: bool = typer.Option(
         False,
         "--no-live",
@@ -81,10 +89,11 @@ def run(
     _warn_if_live_data_may_be_mixed(query_time, no_live)
 
     logger.info(
-        "Running pipeline: products=%s, provider=%s, query_time=%s, no_live=%s",
+        "Running pipeline: products=%s, provider=%s, query_time=%s, window=%s, no_live=%s",
         products,
         provider,
         query_time,
+        window,
         no_live,
     )
 
@@ -95,6 +104,7 @@ def run(
         provider=llm_provider,
         fail_on_grounding=fail_on_grounding,
         query_time=query_time,
+        window=window,
         no_live=no_live,
     )
 

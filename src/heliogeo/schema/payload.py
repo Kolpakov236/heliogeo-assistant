@@ -18,6 +18,7 @@ class Metadata(BaseModel):
     issued_utc: datetime = Field(..., description="Время выпуска (UTC)")
     valid_until_utc: datetime = Field(..., description="Действительно до (UTC)")
     generator_version: str = Field(default="1.0", description="Версия генератора")
+    source_products: list[str] = Field(..., description="Источники")
 
 
 class UnifiedPayload(BaseModel):

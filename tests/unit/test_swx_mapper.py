@@ -368,25 +368,114 @@ def test_map_images_returns_empty() -> None:
 
 
 def test_technical_issues_empty_old_date() -> None:
-    """Старая дата, нет проблем → None."""
-    result = map_technical_issues([], "rtsw", "2019-01-01")
-    assert result is None
+    """Старая дата без частичных продуктов → проверяем отсутствие particle issue."""
+    result = map_technical_issues(
+        [],
+        "rtsw",
+        "2019-01-01",
+        has_l1_rtsw=True,
+        active_regions_growth="new",
+    )
+
+    assert result is not None
+    assert "SGPS" not in result
+    assert "MPS-HI" not in result
 
 
 def test_technical_issues_sgps_only() -> None:
-    """Дата после 2020-11-01 → только SGPS."""
-    result = map_technical_issues([], "rtsw", "2026-09-01")
+    """Дата после 2020-11-01 → есть предупреждение про SGPS."""
+    result = map_technical_issues(
+        [],
+        "rtsw",
+        "2026-09-01",
+        has_l1_rtsw=True,
+        forecast_available=True,
+        discussion_available=True,
+        active_regions_growth="empty",
+    )
+
     assert result is not None
     assert "SGPS" in result
-    assert "omni" not in result.lower()
+    assert "OMNI" not in result
+    assert "omni_hro" not in result.lower()
+    assert "omni2" not in result.lower()
 
 
-def test_technical_issues_omni() -> None:
-    """source=omni → issue про L1."""
-    result = map_technical_issues([], "omni_hro_1min", "2026-09-01")
+def test_technical_issues_omni_hro() -> None:
+    """OMNI HRO → предупреждение про subsolar bow shock nose."""
+    result = map_technical_issues(
+        [],
+        "omni_hro",
+        "2026-09-01",
+        has_l1_rtsw=False,
+        forecast_available=True,
+        discussion_available=True,
+        active_regions_growth="empty",
+    )
+
     assert result is not None
-    assert "omni_hro_1min" in result
-    assert "not L1" in result
+    assert "omni_hro" in result
+    assert "subsolar bow shock nose" in result
+    assert "not raw DSCOVR/ACE" in result
+
+
+@pytest.mark.parametrize(
+    ("source", "caveat"),
+    [
+        ("omni_hro_1min", "subsolar bow shock nose"),
+        ("omni2_hourly", "OMNI HRO 1-min not downloaded"),
+    ],
+)
+def test_technical_issues_real_omni_source_values(source: str, caveat: str) -> None:
+    """Источник отдаёт omni_hro_1min и omni2_hourly: оговорки не должны теряться."""
+    result = map_technical_issues(
+        [],
+        source,
+        "2026-09-01",
+        has_l1_rtsw=False,
+        forecast_available=True,
+        discussion_available=True,
+        active_regions_growth="empty",
+    )
+
+    assert result is not None
+    assert caveat in result
+
+
+def test_technical_issues_l1_ace_no_omni_warning() -> None:
+    """L1 ACE → нет предупреждения про OMNI bow shock."""
+    result = map_technical_issues(
+        [],
+        "l1_ace",
+        "2026-09-01",
+        has_l1_rtsw=True,
+        forecast_available=True,
+        discussion_available=True,
+        active_regions_growth="empty",
+    )
+
+    assert result is not None
+    assert "l1_ace" in result
+    assert "bow shock nose" not in result
+    assert "not raw DSCOVR/ACE" not in result
+
+
+def test_technical_issues_omni2() -> None:
+    """OMNI2 → предупреждение про 1-hour history."""
+    result = map_technical_issues(
+        [],
+        "omni2",
+        "2026-09-01",
+        has_l1_rtsw=False,
+        forecast_available=True,
+        discussion_available=True,
+        active_regions_growth="empty",
+    )
+
+    assert result is not None
+    assert "omni2" in result
+    assert "1-hour" in result
+    assert "OMNI HRO 1-min not downloaded" in result
 
 
 def test_technical_issues_sgps() -> None:

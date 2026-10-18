@@ -133,10 +133,9 @@ def test_extract_window_passed(client: SwxClient) -> None:
     assert get_data.call_args.kwargs["no_live"] is True
 
 
-def test_extract_validation_failure(client: SwxClient) -> None:
-    """Битые данные → SwxExtractorError."""
-    extractor = SwxExtractor(client=client)
-    bad_data = {
+def _data_with_kp(kp_max: float) -> dict:
+    """Минимальный ответ /data с заданным максимумом Kp."""
+    return {
         "query_time": "2026-09-01T12:00:00+00:00",
         "window": {
             "spec": "ut_day",
@@ -148,14 +147,28 @@ def test_extract_validation_failure(client: SwxClient) -> None:
         "cmes": [],
         "particles": {},
         "solar_wind": {},
-        "geomag": {"kp_obs": {"max": 99.0}},  # Kp > 9 → validation fail
+        "geomag": {"kp_obs": {"max": kp_max}},
         "notes": [],
     }
+
+
+def test_extract_validation_invalid_data(client: SwxClient) -> None:
+    """Битые данные (Kp < 0) → SwxExtractorError."""
+    extractor = SwxExtractor(client=client)
     with (
-        patch.object(client, "get_data", return_value=make_data_response(bad_data)),
+        patch.object(client, "get_data", return_value=make_data_response(_data_with_kp(-1.0))),
         pytest.raises(SwxExtractorError, match="Payload validation failed"),
     ):
         extractor.extract()
+
+
+def test_extract_kp_above_nine_is_clamped(client: SwxClient) -> None:
+    """Kp > 9 — неточность измерений: значение ограничивается девяткой, сборка не падает."""
+    extractor = SwxExtractor(client=client)
+    with patch.object(client, "get_data", return_value=make_data_response(_data_with_kp(99.0))):
+        payload, _ = extractor.extract()
+
+    assert payload.geospace.kp_observed == 9
 
 
 def test_extract_unparsable_query_time_fails_loudly(client: SwxClient) -> None:

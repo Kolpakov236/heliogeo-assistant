@@ -32,14 +32,15 @@
 | `issued_utc` | `datetime` | ✅ | Время выпуска пейлоада (UTC) |
 | `valid_until_utc` | `datetime` | ✅ | Время, до которого пейлоад действителен (UTC) |
 | `generator_version` | `str` | ✅ | Версия генератора (по умолчанию `"1.0"`) |
-
+| `source_products` | `list[str]` | ✅ | Источники |
 **Пример:**
 
 ```json
 {
   "issued_utc": "2026-05-12T00:00:00Z",
   "valid_until_utc": "2026-05-13T12:00:00Z",
-  "generator_version": "1.0"
+  "generator_version": "1.0",
+  "source_products": []
 }
 ```
 

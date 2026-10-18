@@ -11,6 +11,15 @@ from heliogeo.core.logging import get_logger
 
 logger = get_logger(__name__)
 
+PARTICLES_SWPC_END = "2020-03-09"  # последний день SWPC Gp_part
+PARTICLES_MPS_HI_START = "2020-03-10"  # NetCDF MPS-HI, нет 5-мин ряда
+PARTICLES_MPS_HI_END = "2020-10-31"  # последний день MPS-HI
+PARTICLES_SGPS_START = "2020-11-01"  # архив SGPS avg5m, сумма каналов
+
+FORECAST_NCEI_START = "2022-03-01"  # 3-day forecast на NCEI
+DISCUSSION_NCEI_START = "2024-03-01"  # Forecast Discussion на NCEI
+DAYPRE_START = "2013-01-01"  # daypre как запасной источник
+DONKI_START = "2010-01-01"  # DONKI доступен с 2010
 
 # --- Solar Activity ---
 
@@ -252,23 +261,150 @@ def map_images(data: dict[str, Any] | None) -> dict[str, Any]:
 # --- Technical Issues ---
 
 
+def _in_range(d: str, lo: str, hi: str) -> bool:
+    """Лексикографическая проверка: работает при строгом YYYY-MM-DD."""
+    return lo <= d <= hi
+
+
 def map_technical_issues(
     notes: list[str],
     solar_wind_source: str,
     snapshot_date: str,
+    *,
+    has_l1_rtsw: bool = False,
+    omni_min_downloaded: bool = False,
+    forecast_available: bool = False,
+    discussion_available: bool = False,
+    donki_lag_days: int | None = None,
+    dst_kind: str | None = None,  # "final" | "provisional" | "realtime"
+    active_regions_growth: str | None = None,  # "new" | "empty" | None
 ) -> str | None:
     """Собрать technical_issues из notes и оговорок API.
 
-    Оговорки:
-    - source != rtsw → данные OMNI, не L1.
-    - snapshot_date >= 2020-11-01 → SGPS >10 MeV не операционный.
+    Правила:
+
+    Частицы:
+      - 2017-01-01 .. 2020-03-09:
+        SWPC Gp_part.
+      - 2020-03-10 .. 2020-10-31:
+        MPS-HI NetCDF; 5-минутного ряда нет.
+      - 2020-11-01 .. настоящее:
+        SGPS avg5m; proton >10 MeV — сумма каналов SGPS,
+        это не операционный SWPC отклик.
+      - Суточная флюенция dayind сама по себе эту дыру
+        не устраняет.
+
+    Солнечный ветер:
+      - RTSW 1-min доступен только как live/recent.
+      - Исторический 1-min источник — OMNI HRO.
+      - Если HRO не скачан, возможен OMNI2 1-hour.
+      - OMNI HRO сдвинут к subsolar bow-shock nose и
+        не является сырым L1 DSCOVR/ACE.
+      - Для реального L1 ACE/Wind это предупреждение
+        про OMNI HRO не добавляется.
+
+    Прогнозы:
+      - NCEI 3-day forecast существует с 2022-03-01.
+      - До этого используется daypre (с 2013-01-01)
+        и наблюдаемый Kp.
+      - Forecast Discussion NCEI существует с 2024-03-01.
+      - Для более ранних дат query discussion возвращает RSGA.
+      - Если для сегодняшней/актуальной даты архивного выпуска
+        ещё нет, используется live discussion.txt.
+
+    DONKI:
+      - доступен с 2010-01-01;
+      - кинематика может отставать;
+      - earth_directed — эвристика, а не список попадания
+        WSA-ENLIL.
+
+    Dst:
+      - final предпочтительнее provisional;
+      - provisional предпочтительнее realtime;
+      - realtime требует явной оговорки.
+
+    Active regions:
+      - growth считается относительно предыдущего файла;
+      - если предыдущего файла нет, статус может быть "new"
+        или "empty"; в обоих случаях добавляется оговорка.
     """
-    issues: list[str] = list(notes)
+
+    issues: list[str] = list(notes or [])
+
+    if snapshot_date >= PARTICLES_SGPS_START:
+        issues.append("Proton >10 MeV: SGPS channels sum, not SWPC operational")
+
+    elif _in_range(
+        snapshot_date,
+        PARTICLES_MPS_HI_START,
+        PARTICLES_MPS_HI_END,
+    ):
+        issues.append(
+            "Proton >10 MeV: no 5-min series "
+            "(NetCDF MPS-HI; archive SGPS avg5m starts 2020-11)"
+        )
 
     if solar_wind_source != "rtsw":
-        issues.append(f"Solar wind source: {solar_wind_source} " f"(OMNI bow shock nose, not L1)")
+        issues.append(f"Solar wind source: {solar_wind_source}")
 
-    if snapshot_date >= "2020-11-01":
-        issues.append("Proton >10 MeV: SGPS channels sum, not SWPC operational")
+    if not has_l1_rtsw:
+        issues.append(
+            "1-min RTSW available only as live (recent hours/day); "
+            "history via OMNI HRO 1-min or OMNI2 1-hour"
+        )
+
+    # Источник отдаёт omni_hro_1min и omni2_hourly, а не голые omni_hro / omni2
+    if solar_wind_source.startswith("omni_hro"):
+        issues.append(
+            "OMNI HRO shifted to subsolar bow shock nose " "(not raw DSCOVR/ACE)"
+        )
+
+    elif solar_wind_source.startswith("omni2"):
+        issues.append(
+            "Solar wind history: OMNI2 1-hour used; " "OMNI HRO 1-min not downloaded"
+        )
+
+    if snapshot_date < FORECAST_NCEI_START:
+        issues.append(
+            f"3-day forecast: NCEI archive starts {FORECAST_NCEI_START}; "
+            f"before that only daypre (from {DAYPRE_START}) and observed Kp"
+        )
+    elif not forecast_available:
+        issues.append(
+            "3-day forecast: expected NCEI archive product is unavailable "
+            "for this date"
+        )
+    if not discussion_available:
+        if snapshot_date < DISCUSSION_NCEI_START:
+            issues.append(
+                f"Forecast Discussion: NCEI archive starts "
+                f"{DISCUSSION_NCEI_START}; earlier query returns RSGA"
+            )
+        else:
+            issues.append(
+                "Forecast Discussion: live discussion.txt used "
+                "(no archived issue for today yet)"
+            )
+
+    if (
+        snapshot_date >= DONKI_START
+        and donki_lag_days is not None
+        and donki_lag_days > 0
+    ):
+        issues.append(
+            f"DONKI kinematics may lag by {donki_lag_days} day(s); "
+            "earth_directed is a heuristic, not WSA-ENLIL hit list"
+        )
+
+    if dst_kind == "realtime":
+        issues.append("Kyoto Dst: only realtime available (recent months)")
+
+    elif dst_kind == "provisional":
+        issues.append("Kyoto Dst: provisional (final not yet published)")
+
+    if active_regions_growth == "new":
+        issues.append("Active region growth: no previous file; growth marked 'new'")
+    elif active_regions_growth in (None, "empty"):
+        issues.append("Active region growth: no previous file, growth empty")
 
     return " | ".join(issues) if issues else None

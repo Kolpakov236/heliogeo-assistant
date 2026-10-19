@@ -1,0 +1,813 @@
+# Правила сигналов (вид «signals», задача B6): паспорта признаков, полосы нормы, сигналы.
+# Формат и проверки — heliogeo.contracts.signals и docs/contracts.md («Правила сигналов»).
+#
+# Конвейер: признаки (features.compute) -> эти правила -> сигналы -> LLM («объясни, что значат
+# сигналы»). В LLM уходят только сработавшие сигналы, а не сам файл и не все 40 признаков.
+#
+# Пороги — общеизвестные шкалы NOAA (G по Kp, R по рентгеновскому потоку), классы вспышек и
+# типичные границы ветра. Всё предварительное: файл не подписан, пороги подтверждает
+# предметный эксперт. Изменение любого значения требует повышения version
+# (make contracts-lock).
+#
+# Правила записи:
+#   * степени — только вида 1.0e-5 (без знака в показателе YAML читает строку);
+#   * полосы bands идут по возрастанию, lt — исключённая верхняя граница, у последней lt нет;
+#   * критичный признак (critical: true) обязан иметь on_missing — сигнал «данных нет»;
+#   * пустое значение законно только там, где задано empty_ok_when (нет событий за сутки).
+version: "0.1.0"
+approved_by: null
+approved_at: null
+
+features:
+  # ═══ activity_history: Kp и Dst ═══
+  kp_cur:
+    type: number
+    meaning: "Последнее известное трёхчасовое значение Kp."
+    valid_range: [0, 9]
+    bands:
+      - { label: quiet, lt: 3, explain: "Геомагнитное поле спокойное." }
+      - { label: unsettled, lt: 4, explain: "Слабо возмущено; влияния на системы нет." }
+      - { label: active, lt: 5, explain: "Возмущено; заметного влияния на системы нет." }
+      - { label: storm, explain: "Геомагнитная буря (шкала G)." }
+    llm_note: "Kp дробный: 2.333 — это 2+, 4.667 — это 5-."
+
+  kp_max_1d:
+    type: number
+    meaning: "Максимум трёхчасового Kp за 24 часа: высшая геомагнитная возмущённость за сутки."
+    valid_range: [0, 9]
+    critical: true
+    bands:
+      - { label: quiet, lt: 3, explain: "Геомагнитное поле спокойное." }
+      - { label: unsettled, lt: 4, explain: "Слабо возмущено; влияния на системы нет." }
+      - { label: active, lt: 5, explain: "Возмущено; заметного влияния на системы нет." }
+      - { label: g1, lt: 6, explain: "Слабая буря G1." }
+      - { label: g2, lt: 7, explain: "Умеренная буря G2." }
+      - { label: g3, lt: 8, explain: "Сильная буря G3." }
+      - { label: g4, lt: 9, explain: "Очень сильная буря G4." }
+      - { label: g5, explain: "Экстремальная буря G5." }
+    on_missing: { signal: kp_unavailable }
+    llm_note: "Канонический источник Kp — GFZ (8 значений в сутки); Kp дробный: 2.333 = 2+."
+
+  kp_mean_1d:
+    type: number
+    meaning: "Среднее трёхчасового Kp за 24 часа."
+    valid_range: [0, 9]
+    bands:
+      - { label: quiet, lt: 3, explain: "В среднем спокойно." }
+      - { label: unsettled, lt: 4, explain: "В среднем слабо возмущено." }
+      - { label: active, lt: 5, explain: "В среднем возмущено." }
+      - { label: storm, explain: "Устойчиво высокая возмущённость." }
+
+  kp_max_3d:
+    type: number
+    meaning: "Максимум трёхчасового Kp за 3 суток."
+    valid_range: [0, 9]
+    bands:
+      - { label: quiet, lt: 3, explain: "За 3 суток спокойно." }
+      - { label: unsettled, lt: 5, explain: "За 3 суток были слабые возмущения." }
+      - { label: storm, explain: "За 3 суток была геомагнитная буря." }
+
+  kp_mean_3d:
+    type: number
+    meaning: "Среднее трёхчасового Kp за 3 суток."
+    valid_range: [0, 9]
+    bands:
+      - { label: quiet, lt: 3, explain: "В среднем за 3 суток спокойно." }
+      - { label: elevated, lt: 5, explain: "В среднем за 3 суток возмущено." }
+      - { label: high, explain: "Устойчиво высокая возмущённость за 3 суток." }
+
+  kp_max_7d:
+    type: number
+    meaning: "Максимум трёхчасового Kp за 7 суток."
+    valid_range: [0, 9]
+    bands:
+      - { label: quiet, lt: 3, explain: "За неделю спокойно." }
+      - { label: unsettled, lt: 5, explain: "За неделю были слабые возмущения." }
+      - { label: storm, explain: "За неделю была геомагнитная буря." }
+
+  kp_mean_7d:
+    type: number
+    meaning: "Среднее трёхчасового Kp за 7 суток."
+    valid_range: [0, 9]
+    bands:
+      - { label: quiet, lt: 3, explain: "В среднем за неделю спокойно." }
+      - { label: elevated, lt: 5, explain: "В среднем за неделю возмущено." }
+      - { label: high, explain: "Устойчиво высокая возмущённость за неделю." }
+
+  kp_trend_3d:
+    type: number
+    meaning: "Наклон Kp за 3 суток (метод наименьших квадратов): растёт или падает возмущённость."
+    unit: "Kp/сутки"
+    valid_range: [-9, 9]
+    bands:
+      - { label: falling, lt: -0.5, explain: "Возмущённость снижается." }
+      - { label: steady, lt: 0.5, explain: "Возмущённость почти не меняется." }
+      - { label: rising, lt: 1.0, explain: "Возмущённость растёт." }
+      - { label: sharp_rising, explain: "Возмущённость быстро растёт." }
+    llm_note: "Формула тренда предварительная; не называть точное значение как факт без оговорки."
+
+  dst_min_1d:
+    type: number
+    meaning: "Минимум индекса Dst за сутки: чем ниже (отрицательнее), тем сильнее магнитная буря."
+    unit: "нТл"
+    valid_range: [-800, 100]
+    bands:
+      - { label: extreme_storm, lt: -200, explain: "Экстремальная буря." }
+      - { label: strong_storm, lt: -100, explain: "Сильная буря." }
+      - { label: moderate_storm, lt: -50, explain: "Умеренная буря." }
+      - { label: weak_disturbance, lt: -30, explain: "Слабое возмущение." }
+      - { label: quiet, explain: "Спокойно." }
+
+  # ═══ recurrence: 27-суточная повторяемость ═══
+  kp_recurrence_27d:
+    type: number
+    meaning: "Максимум Kp за сутки вокруг момента один оборот Солнца назад (27,3 суток)."
+    valid_range: [0, 9]
+    bands:
+      - { label: quiet_then, lt: 5, explain: "Оборот назад бури не было." }
+      - { label: storm_then, explain: "Оборот назад была буря: возможен повтор от долгоживущей структуры." }
+
+  kp_recurrence_54d:
+    type: number
+    meaning: "Максимум Kp за сутки вокруг момента два оборота Солнца назад (54,6 суток)."
+    valid_range: [0, 9]
+    bands:
+      - { label: quiet_then, lt: 5, explain: "Два оборота назад бури не было." }
+      - { label: storm_then, explain: "Два оборота назад была буря." }
+
+  # ═══ solar_wind: солнечный ветер ═══
+  sw_speed_min:
+    type: number
+    meaning: "Минимальная скорость солнечного ветра за сутки."
+    unit: "км/с"
+    valid_range: [200, 3000]
+    bands:
+      - { label: ambient, lt: 450, explain: "Фоновая скорость." }
+      - { label: elevated, explain: "Повышенная даже на минимуме: поток держится высоким." }
+
+  sw_speed_avg:
+    type: number
+    meaning: "Средняя скорость солнечного ветра за сутки."
+    unit: "км/с"
+    valid_range: [200, 3000]
+    critical: true
+    bands:
+      - { label: ambient, lt: 450, explain: "Фоновая скорость." }
+      - { label: elevated, lt: 600, explain: "Повышенная скорость." }
+      - { label: high, lt: 800, explain: "Высокая скорость (типично для потока из корональной дыры)." }
+      - { label: very_high, lt: 1000, explain: "Очень высокая скорость." }
+      - { label: extreme, explain: "Экстремальная скорость (признак мощного выброса)." }
+    on_missing: { signal: sw_unavailable }
+    llm_note: "Данные OMNI — не точка L1, качество degraded: не подавать как измерение в L1."
+
+  sw_speed_max:
+    type: number
+    meaning: "Максимальная скорость солнечного ветра за сутки."
+    unit: "км/с"
+    valid_range: [200, 3000]
+    bands:
+      - { label: ambient, lt: 450, explain: "Фоновая скорость." }
+      - { label: elevated, lt: 600, explain: "Повышенная скорость." }
+      - { label: high, lt: 800, explain: "Высокая скорость." }
+      - { label: very_high, lt: 1000, explain: "Очень высокая скорость." }
+      - { label: extreme, explain: "Экстремальная скорость." }
+
+  sw_density_avg:
+    type: number
+    meaning: "Средняя плотность солнечного ветра за сутки."
+    unit: "частиц/см³"
+    valid_range: [0.01, 200]
+    bands:
+      - { label: normal, lt: 10, explain: "Обычная плотность." }
+      - { label: elevated, lt: 20, explain: "Повышенная плотность." }
+      - { label: high, lt: 50, explain: "Высокая плотность." }
+      - { label: extreme, explain: "Экстремальная плотность." }
+
+  sw_bt:
+    type: number
+    meaning: "Полная индукция межпланетного магнитного поля (Bt)."
+    unit: "нТл"
+    valid_range: [0, 100]
+    bands:
+      - { label: normal, lt: 10, explain: "Обычное поле." }
+      - { label: enhanced, lt: 20, explain: "Усиленное поле." }
+      - { label: strong, lt: 50, explain: "Сильное поле." }
+      - { label: extreme, explain: "Экстремальное поле." }
+
+  sw_bz_min:
+    type: number
+    meaning: >-
+      Минимум компоненты Bz межпланетного поля за сутки. Длительное отрицательное (южное) Bz
+      вместе с высокой скоростью — главное условие геомагнитной бури.
+    unit: "нТл"
+    valid_range: [-100, 100]
+    bands:
+      - { label: extreme_south, lt: -50, explain: "Экстремально сильное южное Bz." }
+      - { label: strong_south, lt: -20, explain: "Сильное южное Bz." }
+      - { label: moderate_south, lt: -10, explain: "Заметное южное Bz." }
+      - { label: normal, explain: "Bz в обычных пределах." }
+    llm_note: "Это минимум за сутки, а не значение в конкретный момент."
+
+  sw_sector:
+    type: string
+    meaning: "Сектор межпланетного магнитного поля: к Солнцу (toward) или от Солнца (away)."
+    allowed_values: [toward, away]
+    llm_note: "Смена сектора часто сопровождается ростом активности, сам по себе сектор — не тревога."
+
+  sw_speed_trend_24h:
+    type: number
+    meaning: "Изменение средней скорости ветра относительно предыдущих суток."
+    unit: "км/с"
+    valid_range: [-1500, 1500]
+    bands:
+      - { label: slowing, lt: -100, explain: "Ветер заметно замедляется." }
+      - { label: steady, lt: 100, explain: "Скорость почти не меняется." }
+      - { label: accelerating, lt: 200, explain: "Ветер ускоряется." }
+      - { label: sharp_increase, explain: "Резкий рост скорости: возможен приход выброса или потока." }
+
+  # ═══ solar_activity: активные области и вспышки ═══
+  ar_count:
+    type: integer
+    meaning: "Число активных областей на видимом диске."
+    valid_range: [0, 100]
+    critical: true
+    bands:
+      - { label: none, lt: 1, explain: "Активных областей нет." }
+      - { label: few, lt: 6, explain: "Немного областей." }
+      - { label: moderate, lt: 12, explain: "Умеренное число областей." }
+      - { label: many, explain: "Много областей." }
+    on_missing: { signal: ar_unavailable }
+
+  ar_total_area:
+    type: integer
+    meaning: "Суммарная площадь активных областей."
+    unit: "миллионных долей полусферы"
+    valid_range: [0, 10000]
+    bands:
+      - { label: small, lt: 500, explain: "Небольшая суммарная площадь." }
+      - { label: moderate, lt: 1500, explain: "Умеренная площадь." }
+      - { label: large, lt: 3000, explain: "Большая площадь." }
+      - { label: very_large, explain: "Очень большая площадь." }
+
+  ar_has_delta:
+    type: boolean
+    meaning: >-
+      Есть ли на диске область с дельта-конфигурацией магнитного поля — главный предиктор
+      мощных вспышек.
+    llm_note: "Если true, об этом нужно сказать обязательно."
+
+  ar_max_mcintosh_z:
+    type: string
+    meaning: "Наибольший класс Z по McIntosh среди областей диска (сложность группы пятен)."
+    allowed_values: [A, B, C, D, E, F, H]
+    empty_ok_when: { feature: ar_count, eq: 0 }
+    llm_note: "A, B, H — простые группы; D, E, F — сложные и протяжённые."
+
+  ar_new_count:
+    type: integer
+    meaning: "Число новых активных областей, получивших номер за сутки."
+    valid_range: [0, 50]
+    bands:
+      - { label: none, lt: 1, explain: "Новых областей нет." }
+      - { label: few, lt: 4, explain: "Появилось несколько областей." }
+      - { label: many_new, explain: "Много новых областей." }
+
+  flares_c_24h:
+    type: integer
+    meaning: "Число вспышек класса C за 24 часа."
+    valid_range: [0, 1000]
+    critical: true
+    bands:
+      - { label: none, lt: 1, explain: "Вспышек класса C не было." }
+      - { label: few, lt: 10, explain: "Несколько слабых вспышек." }
+      - { label: many, explain: "Много слабых вспышек." }
+    on_missing: { signal: flares_unavailable }
+
+  flares_m_24h:
+    type: integer
+    meaning: "Число вспышек класса M за 24 часа."
+    valid_range: [0, 500]
+    critical: true
+    bands:
+      - { label: none, lt: 1, explain: "Вспышек класса M не было." }
+      - { label: some, lt: 5, explain: "Были вспышки класса M." }
+      - { label: many, explain: "Много вспышек класса M." }
+    on_missing: { signal: flares_unavailable }
+
+  flares_x_24h:
+    type: integer
+    meaning: "Число вспышек класса X за 24 часа."
+    valid_range: [0, 100]
+    critical: true
+    bands:
+      - { label: none, lt: 1, explain: "Вспышек класса X не было." }
+      - { label: some, lt: 3, explain: "Были вспышки класса X." }
+      - { label: many, explain: "Серия вспышек класса X." }
+    on_missing: { signal: flares_unavailable }
+
+  flare_max_flux_24h:
+    type: number
+    meaning: >-
+      Рентгеновский поток самой мощной вспышки за сутки. Класс вспышки: A, B — фон; C — слабая;
+      M — средняя; X — сильная.
+    unit: "Вт/м²"
+    valid_range: [1.0e-9, 1.0e-2]
+    bands:
+      - { label: a_class, lt: 1.0e-7, explain: "Класс A: фон, Солнце спокойно." }
+      - { label: b_class, lt: 1.0e-6, explain: "Класс B: фон, Солнце спокойно." }
+      - { label: c_class, lt: 1.0e-5, explain: "Класс C: слабая активность, влияния на связь нет." }
+      - { label: m_class, lt: 1.0e-4, explain: "Класс M: средняя вспышка, возможны помехи HF." }
+      - { label: x_class, explain: "Класс X: сильная вспышка." }
+    empty_ok_when:
+      all:
+        - { feature: flares_c_24h, eq: 0 }
+        - { feature: flares_m_24h, eq: 0 }
+        - { feature: flares_x_24h, eq: 0 }
+    llm_note: "Нет значения при нулевых счётчиках — значит вспышек C и сильнее не было, это норма."
+
+  days_since_last_m:
+    type: integer
+    meaning: "Число суток с последней вспышки класса M или сильнее (по доступной истории)."
+    unit: "суток"
+    valid_range: [0, 36500]
+    bands:
+      - { label: today, lt: 1, explain: "Вспышка M или сильнее была в последние сутки." }
+      - { label: recent, lt: 3, explain: "Вспышка M или сильнее была недавно." }
+      - { label: week, lt: 10, explain: "Последняя вспышка M или сильнее — в пределах 10 суток." }
+      - { label: long_ago, explain: "Давно не было вспышек M или сильнее." }
+    llm_note: "Нет значения — вспышек такого класса нет в доступной истории, а не «никогда»."
+
+  days_since_last_x:
+    type: integer
+    meaning: "Число суток с последней вспышки класса X (по доступной истории)."
+    unit: "суток"
+    valid_range: [0, 36500]
+    bands:
+      - { label: today, lt: 1, explain: "Вспышка X была в последние сутки." }
+      - { label: recent, lt: 3, explain: "Вспышка X была недавно." }
+      - { label: week, lt: 10, explain: "Последняя вспышка X — в пределах 10 суток." }
+      - { label: long_ago, explain: "Давно не было вспышек X." }
+    llm_note: "Нужна длинная история: X-вспышки редки."
+
+  # ═══ cme: корональные выбросы массы ═══
+  cme_count_24h:
+    type: integer
+    meaning: "Число корональных выбросов массы за 24 часа."
+    valid_range: [0, 100]
+    critical: true
+    bands:
+      - { label: none, lt: 1, explain: "Выбросов не было." }
+      - { label: few, lt: 5, explain: "Несколько выбросов." }
+      - { label: many, explain: "Много выбросов." }
+    on_missing: { signal: cme_unavailable }
+
+  cme_earth_directed:
+    type: integer
+    meaning: "Число выбросов, направленных к Земле, за 24 часа."
+    valid_range: [0, 50]
+    critical: true
+    bands:
+      - { label: none, lt: 1, explain: "Выбросов к Земле нет." }
+      - { label: some, explain: "Есть выбросы, направленные к Земле." }
+    on_missing: { signal: cme_unavailable }
+    llm_note: "Ноль означает «нет выбросов к Земле» только если cme_direction_unknown тоже ноль."
+
+  cme_direction_unknown:
+    type: integer
+    meaning: "Число выбросов, направление которых определить не удалось (earth_directed неизвестно)."
+    valid_range: [0, 100]
+    bands:
+      - { label: none, lt: 1, explain: "Направление всех выбросов определено." }
+      - { label: some_unknown, explain: "У части выбросов направление не определено." }
+    llm_note: "Неизвестно не равно «мимо Земли»: нельзя писать «выбросов к Земле нет» категорично."
+
+  cme_speed_max_24h:
+    type: number
+    meaning: "Максимальная скорость выбросов за 24 часа."
+    unit: "км/с"
+    valid_range: [0, 4000]
+    bands:
+      - { label: slow, lt: 500, explain: "Медленные выбросы." }
+      - { label: fast, lt: 1000, explain: "Быстрые выбросы." }
+      - { label: very_fast, explain: "Очень быстрые выбросы." }
+    empty_ok_when: { feature: cme_count_24h, eq: 0 }
+    llm_note: "Нет значения при нуле выбросов — это норма."
+
+  cme_width_max_24h:
+    type: number
+    meaning: "Максимальная угловая ширина выбросов за 24 часа."
+    unit: "градусы"
+    valid_range: [0, 360]
+    bands:
+      - { label: narrow, lt: 60, explain: "Узкие выбросы." }
+      - { label: wide, lt: 120, explain: "Широкие выбросы." }
+      - { label: halo_like, explain: "Почти гало: выброс охватывает большую часть диска." }
+    empty_ok_when: { feature: cme_count_24h, eq: 0 }
+
+  cme_earth_directed_speed_max_24h:
+    type: number
+    meaning: "Максимальная скорость выбросов, направленных к Земле, за 24 часа."
+    unit: "км/с"
+    valid_range: [0, 4000]
+    bands:
+      - { label: slow, lt: 500, explain: "Медленные выбросы к Земле." }
+      - { label: fast, lt: 1000, explain: "Быстрые выбросы к Земле." }
+      - { label: very_fast, explain: "Очень быстрые выбросы к Земле." }
+    empty_ok_when: { feature: cme_earth_directed, eq: 0 }
+    llm_note: "Нет значения при нуле выбросов к Земле — это норма."
+
+  # ═══ calendar: календарь и фаза цикла ═══
+  doy:
+    type: integer
+    meaning: "День года: сезонность геомагнитной активности."
+    valid_range: [1, 366]
+
+  cycle_proxy:
+    type: number
+    meaning: >-
+      Предварительная оценка уровня активности солнечного цикла (0–1) по числу и площади
+      активных областей за 27 суток.
+    valid_range: [0, 1]
+    bands:
+      - { label: low, lt: 0.25, explain: "Низкий уровень активности цикла." }
+      - { label: moderate, lt: 0.6, explain: "Средний уровень активности цикла." }
+      - { label: high, explain: "Высокий уровень активности цикла." }
+    llm_note: "Формула предварительная: это уровень активности, а не точная фаза цикла."
+
+  # ═══ external_forecast: чужой прогноз SWPC ═══
+  swpc_g_scale:
+    type: integer
+    meaning: "Уровень геомагнитной бури G (0–5) по числовой сетке Kp из последнего прогноза SWPC."
+    valid_range: [0, 5]
+    bands:
+      - { label: no_storm, lt: 1, explain: "SWPC не ожидает бури." }
+      - { label: minor_moderate, lt: 3, explain: "SWPC ожидает слабую или умеренную бурю." }
+      - { label: strong_or_more, explain: "SWPC ожидает сильную бурю." }
+    llm_note: "Это чужой прогноз, а не наблюдение: писать «по прогнозу SWPC»."
+
+  swpc_r_scale:
+    type: integer
+    meaning: "Уровень радиоблэкаута R (0–5) из прогноза SWPC."
+    valid_range: [0, 5]
+    llm_note: "Сейчас не вычисляется (всегда нет значения): надёжного источника шкалы R нет."
+
+signals:
+  # ═══ «данных нет»: пустое значение — не норма и не ноль ═══
+  - id: kp_unavailable
+    title: "Нет данных по Kp"
+    severity: notice
+    kind: missing_data
+    explain: "Данных по Kp нет: геомагнитную обстановку оценить нельзя (это не «спокойно»)."
+
+  - id: sw_unavailable
+    title: "Нет данных по солнечному ветру"
+    severity: notice
+    kind: missing_data
+    explain: "Данных по скорости солнечного ветра нет: оценить ветер нельзя (это не «фон»)."
+
+  - id: ar_unavailable
+    title: "Нет данных по активным областям"
+    severity: notice
+    kind: missing_data
+    explain: "Данных по активным областям нет: состояние диска Солнца оценить нельзя."
+
+  - id: flares_unavailable
+    title: "Нет данных по вспышкам"
+    severity: notice
+    kind: missing_data
+    explain: "Данных по вспышкам нет: отсутствие вспышек подтвердить нельзя."
+
+  - id: cme_unavailable
+    title: "Нет данных по корональным выбросам"
+    severity: notice
+    kind: missing_data
+    explain: "Данных по выбросам нет: отсутствие выбросов к Земле подтвердить нельзя."
+    forbids_claims: [no_earth_directed_cme]
+
+  # ═══ геомагнитная обстановка ═══
+  - id: geomag_active
+    title: "Геомагнитное поле возмущено"
+    severity: notice
+    when:
+      all:
+        - { feature: kp_max_1d, gte: 4 }
+        - { feature: kp_max_1d, lt: 5 }
+    explain: "Kp достиг 4: поле возмущено, но бури нет; заметного влияния на системы нет."
+
+  - id: geomag_storm_g1
+    title: "Геомагнитная буря G1 (слабая)"
+    severity: warning
+    when:
+      all:
+        - { feature: kp_max_1d, gte: 5 }
+        - { feature: kp_max_1d, lt: 6 }
+    explain: "Слабая буря G1: возможны слабые колебания в электросетях, сияния в высоких широтах."
+    affects: [power_grid]
+
+  - id: geomag_storm_g2
+    title: "Геомагнитная буря G2 (умеренная)"
+    severity: warning
+    when:
+      all:
+        - { feature: kp_max_1d, gte: 6 }
+        - { feature: kp_max_1d, lt: 7 }
+    explain: "Умеренная буря G2: возможны сигналы тревоги в энергосистемах, помехи HF в полярных районах."
+    affects: [power_grid, hf_com]
+
+  - id: geomag_storm_g3
+    title: "Геомагнитная буря G3 (сильная)"
+    severity: alert
+    when:
+      all:
+        - { feature: kp_max_1d, gte: 7 }
+        - { feature: kp_max_1d, lt: 8 }
+    explain: "Сильная буря G3: возможны перебои GNSS и HF, подзарядка поверхности спутников."
+    affects: [power_grid, satcom, gnss, hf_com]
+
+  - id: geomag_storm_g4
+    title: "Геомагнитная буря G4 (очень сильная)"
+    severity: alert
+    when:
+      all:
+        - { feature: kp_max_1d, gte: 8 }
+        - { feature: kp_max_1d, lt: 9 }
+    explain: "Очень сильная буря G4: широкие проблемы с напряжением в сетях, GNSS деградирует на часы."
+    affects: [power_grid, satcom, gnss, hf_com]
+
+  - id: geomag_storm_g5
+    title: "Геомагнитная буря G5 (экстремальная)"
+    severity: alert
+    when: { feature: kp_max_1d, gte: 9 }
+    explain: "Экстремальная буря G5: возможны отключения электросетей, HF недоступна на больших территориях."
+    affects: [power_grid, satcom, gnss, hf_com]
+
+  - id: dst_storm_moderate
+    title: "Умеренная буря по Dst"
+    severity: warning
+    when:
+      all:
+        - { feature: dst_min_1d, lt: -50 }
+        - { feature: dst_min_1d, gte: -100 }
+    explain: "Dst ниже −50 нТл: умеренная магнитная буря."
+
+  - id: dst_storm_strong
+    title: "Сильная буря по Dst"
+    severity: alert
+    when:
+      all:
+        - { feature: dst_min_1d, lt: -100 }
+        - { feature: dst_min_1d, gte: -200 }
+    explain: "Dst ниже −100 нТл: сильная магнитная буря."
+    affects: [power_grid, gnss]
+
+  - id: dst_storm_extreme
+    title: "Экстремальная буря по Dst"
+    severity: alert
+    when: { feature: dst_min_1d, lt: -200 }
+    explain: "Dst ниже −200 нТл: экстремальная магнитная буря."
+    affects: [power_grid, gnss, hf_com, satcom]
+
+  - id: geomag_trend_rising
+    title: "Возмущённость растёт"
+    severity: info
+    when: { feature: kp_trend_3d, gte: 1.0 }
+    explain: "За 3 суток Kp быстро растёт: обстановка ухудшается."
+
+  - id: geomag_recurrence_27d
+    title: "Возможен повтор бури через 27 суток"
+    severity: info
+    when: { feature: kp_recurrence_27d, gte: 5 }
+    explain: "Оборот Солнца назад была буря: возможен повтор от долгоживущей структуры."
+
+  - id: geomag_recurrence_54d
+    title: "Возможен повтор бури через 54 суток"
+    severity: info
+    when: { feature: kp_recurrence_54d, gte: 5 }
+    explain: "Два оборота Солнца назад была буря: возможен повтор."
+
+  # ═══ солнечный ветер ═══
+  - id: sw_speed_elevated
+    title: "Повышенная скорость ветра"
+    severity: notice
+    when:
+      all:
+        - { feature: sw_speed_max, gte: 600 }
+        - { feature: sw_speed_max, lt: 800 }
+    explain: "Скорость ветра достигала 600–800 км/с: поток повышенной скорости."
+
+  - id: sw_speed_high
+    title: "Высокая скорость ветра"
+    severity: warning
+    when:
+      all:
+        - { feature: sw_speed_max, gte: 800 }
+        - { feature: sw_speed_max, lt: 1000 }
+    explain: "Скорость ветра достигала 800–1000 км/с: высокая; возможен рост геомагнитной активности."
+
+  - id: sw_speed_extreme
+    title: "Экстремальная скорость ветра"
+    severity: alert
+    when: { feature: sw_speed_max, gte: 1000 }
+    explain: "Скорость ветра превысила 1000 км/с: признак мощного выброса."
+
+  - id: sw_speed_jump
+    title: "Резкий рост скорости ветра"
+    severity: notice
+    when: { feature: sw_speed_trend_24h, gte: 200 }
+    explain: "Средняя скорость выросла более чем на 200 км/с за сутки: возможен приход выброса или потока."
+
+  - id: sw_density_high
+    title: "Высокая плотность ветра"
+    severity: notice
+    when:
+      all:
+        - { feature: sw_density_avg, gte: 20 }
+        - { feature: sw_density_avg, lt: 50 }
+    explain: "Плотность ветра высокая: усиливает давление на магнитосферу."
+
+  - id: sw_density_extreme
+    title: "Экстремальная плотность ветра"
+    severity: warning
+    when: { feature: sw_density_avg, gte: 50 }
+    explain: "Плотность ветра экстремальная."
+
+  - id: sw_bt_strong
+    title: "Сильное межпланетное поле"
+    severity: notice
+    when:
+      all:
+        - { feature: sw_bt, gte: 20 }
+        - { feature: sw_bt, lt: 50 }
+    explain: "Межпланетное поле сильное: растёт вероятность бури при южном Bz."
+
+  - id: sw_bt_extreme
+    title: "Экстремальное межпланетное поле"
+    severity: warning
+    when: { feature: sw_bt, gte: 50 }
+    explain: "Межпланетное поле экстремальное."
+
+  - id: sw_bz_south_moderate
+    title: "Заметное южное Bz"
+    severity: notice
+    when:
+      all:
+        - { feature: sw_bz_min, lt: -10 }
+        - { feature: sw_bz_min, gte: -20 }
+    explain: "Bz опускался ниже −10 нТл: условия для геомагнитных возмущений."
+
+  - id: sw_bz_south_strong
+    title: "Сильное южное Bz"
+    severity: warning
+    when:
+      all:
+        - { feature: sw_bz_min, lt: -20 }
+        - { feature: sw_bz_min, gte: -50 }
+    explain: "Bz опускался ниже −20 нТл: высокая вероятность геомагнитной бури."
+
+  - id: sw_bz_south_extreme
+    title: "Экстремальное южное Bz"
+    severity: alert
+    when: { feature: sw_bz_min, lt: -50 }
+    explain: "Bz опускался ниже −50 нТл: условия для сильной бури."
+
+  # ═══ Солнце: области и вспышки ═══
+  - id: ar_delta_present
+    title: "Есть область с дельта-конфигурацией"
+    severity: warning
+    when: { feature: ar_has_delta, eq: true }
+    explain: "На диске есть область с дельта-конфигурацией: повышена вероятность мощных вспышек."
+
+  - id: ar_large_complex_group
+    title: "Крупная сложная группа пятен"
+    severity: notice
+    when: { feature: ar_max_mcintosh_z, in: [E, F] }
+    explain: "Есть протяжённая сложная группа пятен (класс E или F): возможны мощные вспышки."
+
+  - id: ar_area_large
+    title: "Большая суммарная площадь областей"
+    severity: notice
+    when: { feature: ar_total_area, gte: 3000 }
+    explain: "Суммарная площадь активных областей большая: повышен потенциал вспышек."
+
+  - id: radio_blackout_r1
+    title: "Радиоблэкаут R1 (слабый)"
+    severity: notice
+    when:
+      all:
+        - { feature: flare_max_flux_24h, gte: 1.0e-5 }
+        - { feature: flare_max_flux_24h, lt: 5.0e-5 }
+    explain: "Вспышка класса M1–M4: слабые помехи HF на освещённой стороне Земли."
+    affects: [hf_com]
+
+  - id: radio_blackout_r2
+    title: "Радиоблэкаут R2 (умеренный)"
+    severity: warning
+    when:
+      all:
+        - { feature: flare_max_flux_24h, gte: 5.0e-5 }
+        - { feature: flare_max_flux_24h, lt: 1.0e-4 }
+    explain: "Вспышка класса M5–M9: ограниченный блэкаут HF на освещённой стороне на десятки минут."
+    affects: [hf_com]
+
+  - id: radio_blackout_r3
+    title: "Радиоблэкаут R3 (сильный)"
+    severity: alert
+    when:
+      all:
+        - { feature: flare_max_flux_24h, gte: 1.0e-4 }
+        - { feature: flare_max_flux_24h, lt: 1.0e-3 }
+    explain: "Вспышка класса X1–X9: широкий блэкаут HF на освещённой стороне примерно на час."
+    affects: [hf_com, gnss]
+
+  - id: radio_blackout_r4
+    title: "Радиоблэкаут R4 (очень сильный)"
+    severity: alert
+    when:
+      all:
+        - { feature: flare_max_flux_24h, gte: 1.0e-3 }
+        - { feature: flare_max_flux_24h, lt: 2.0e-3 }
+    explain: "Вспышка класса X10–X19: блэкаут HF на освещённой стороне на несколько часов."
+    affects: [hf_com, gnss]
+
+  - id: radio_blackout_r5
+    title: "Радиоблэкаут R5 (экстремальный)"
+    severity: alert
+    when: { feature: flare_max_flux_24h, gte: 2.0e-3 }
+    explain: "Вспышка класса X20 и выше: полный блэкаут HF на освещённой стороне на несколько часов."
+    affects: [hf_com, gnss]
+
+  - id: flare_m_many
+    title: "Серия вспышек класса M"
+    severity: warning
+    when: { feature: flares_m_24h, gte: 5 }
+    explain: "За сутки пять и более вспышек класса M: активность высокая."
+
+  - id: flare_activity_recent
+    title: "Недавно были мощные вспышки"
+    severity: info
+    when: { feature: days_since_last_m, lt: 2 }
+    explain: "Вспышка класса M или сильнее была в последние двое суток: повторные вспышки вероятны."
+
+  # ═══ корональные выбросы ═══
+  - id: cme_earth_directed_seen
+    title: "Выбросы летят к Земле"
+    severity: warning
+    when: { feature: cme_earth_directed, gte: 1 }
+    explain: "Есть корональные выбросы, направленные к Земле: возможна геомагнитная буря при их приходе."
+
+  - id: cme_earth_directed_fast
+    title: "Быстрый выброс летит к Земле"
+    severity: alert
+    when: { feature: cme_earth_directed_speed_max_24h, gte: 1000 }
+    explain: "Выброс к Земле со скоростью более 1000 км/с: вероятна сильная буря; приход — интервалом, не точкой."
+
+  - id: cme_fast
+    title: "Быстрый корональный выброс"
+    severity: notice
+    when: { feature: cme_speed_max_24h, gte: 1000 }
+    explain: "Был выброс со скоростью более 1000 км/с."
+
+  - id: cme_direction_undetermined
+    title: "Направление выброса не определено"
+    severity: info
+    when: { feature: cme_direction_unknown, gte: 1 }
+    explain: "У части выбросов направление не определено: нельзя категорично утверждать, что к Земле выбросов нет."
+    forbids_claims: [no_earth_directed_cme]
+
+  # ═══ чужой прогноз ═══
+  - id: swpc_storm_forecast
+    title: "SWPC прогнозирует бурю G1–G2"
+    severity: notice
+    when:
+      all:
+        - { feature: swpc_g_scale, gte: 1 }
+        - { feature: swpc_g_scale, lt: 3 }
+    explain: "Прогноз SWPC: слабая или умеренная геомагнитная буря."
+
+  - id: swpc_storm_forecast_strong
+    title: "SWPC прогнозирует сильную бурю"
+    severity: warning
+    when: { feature: swpc_g_scale, gte: 3 }
+    explain: "Прогноз SWPC: сильная или более сильная геомагнитная буря."
+    affects: [power_grid, satcom, gnss, hf_com]
+
+  # ═══ итоги: отчёт нужен всегда, даже когда всё в норме ═══
+  - id: all_clear
+    title: "Всё в норме"
+    severity: info
+    kind: summary
+    when: { no_signals_at_least: notice, critical: all_present }
+    explain: >-
+      Все наблюдаемые параметры в пределах нормы: Солнце спокойно, геомагнитное поле спокойное,
+      ветер фоновый. Связь HF, навигация GNSS и спутниковая связь работают штатно, повышенной
+      радиации и угрозы электросетям нет.
+    unaffected: [hf_com, gnss, satcom, radiation, power_grid]
+
+  - id: partial_data
+    title: "Спокойно по имеющимся данным"
+    severity: info
+    kind: summary
+    when: { no_signals_at_least: warning, critical: some_missing }
+    explain: >-
+      Тревожных сигналов нет, но часть критичных данных отсутствует: обстановка оценена только
+      по имеющимся данным, а отсутствующие разделы нужно назвать явно.

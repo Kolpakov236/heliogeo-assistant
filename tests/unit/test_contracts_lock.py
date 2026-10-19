@@ -318,7 +318,8 @@ def test_validator_attaches_lock_errors_to_the_file(locked: Path) -> None:
         version="0.1.1",
         features=[make_feature(available_delay="PT1H")],
     )
-    assert "устарел" in validate_directory(locked).files[-1].errors[0]
+    (stale,) = (f for f in validate_directory(locked).files if f.path == "features/specs.yaml")
+    assert "устарел" in stale.errors[0]
     update_lock(locked)
     assert validate_directory(locked).ok
 

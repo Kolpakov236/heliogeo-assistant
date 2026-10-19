@@ -137,6 +137,16 @@
   считается (`swpc_r_scale` всегда `missing`, `swpc_g_scale` только при числовой сетке Kp), —
   в `docs/contracts.md`. Контракт и версия набора признаков не менялись. Тесты
   `tests/unit/test_features_compute.py`.
+- Правила сигналов `contracts/rules/signals.yaml` (новый вид контракта `signals`, модели
+  `heliogeo.contracts.signals`): паспорта всех 40 признаков (смысл, единица, допустимый диапазон,
+  полосы нормы `bands`, `llm_note`), 46 сигналов с условиями `feature` + оператор / `all` / `any` /
+  `not`, сигналы «данных нет» (`on_missing`) для критичных признаков и итоговые сигналы:
+  `all_clear` («всё в норме», отчёт нужен и когда тревог нет) и `partial_data`. Пустое значение
+  не равно норме; `cme_direction_undetermined` запрещает категоричное «выбросов к Земле нет».
+  Схема не допускает дыр в полосах, критичного признака без `on_missing`, порога вне
+  `valid_range`; сверка со `specs.yaml` — в валидаторе контрактов (`CROSS_CHECKS`). Пороги
+  предварительные (шкалы NOAA), файл не подписан. Движок сигналов и промпт для LLM — следующий
+  этап. Тесты `tests/unit/test_contracts_signals.py`; `versions.lock.json` обновлён.
 
 ### Changed
 - `Settings` собирает `database_url` из `POSTGRES_*`, если `DATABASE_URL` не задан. В

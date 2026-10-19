@@ -25,9 +25,37 @@ def make_feature(**overrides: Any) -> dict[str, Any]:
     return data
 
 
+def make_signals_body(**overrides: Any) -> dict[str, Any]:
+    """Тело минимального rules/signals.yaml: паспорт признака из make_feature и итог «всё в норме»."""
+    body: dict[str, Any] = {
+        "features": {
+            "kp_max_1d": {
+                "type": "number",
+                "meaning": "Максимум трёхчасового Kp за 24 часа",
+                "valid_range": [0, 9],
+            }
+        },
+        "signals": [
+            {
+                "id": "all_clear",
+                "severity": "info",
+                "kind": "summary",
+                "when": {"no_signals_at_least": "notice", "critical": "all_present"},
+                "explain": "Все наблюдаемые параметры в норме.",
+            }
+        ],
+    }
+    body.update(overrides)
+    return body
+
+
 def contract_data(kind_name: str, **overrides: Any) -> dict[str, Any]:
     """Минимальное валидное содержимое контракта вида ``kind_name``: конверт плюс тело."""
-    body: dict[str, Any] = {"features": [make_feature()]} if kind_name == "features" else {}
+    body: dict[str, Any] = {}
+    if kind_name == "features":
+        body = {"features": [make_feature()]}
+    elif kind_name == "signals":
+        body = make_signals_body()
     return {**ENVELOPE, **body, **overrides}
 
 

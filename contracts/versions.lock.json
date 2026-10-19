@@ -16,6 +16,10 @@
       "sha256": "a2f2a2a871fc6c22108aeb363ce5d0ff5ddc2e4dfe0d56f5f73f2c9df22316c0",
       "version": "0.0.0"
     },
+    "rules/signals.yaml": {
+      "sha256": "0e9c51c2340ac4390d280421e5c3ef3e1a5dbf29a7234e5a4dc3c2e4d0bdf809",
+      "version": "0.1.0"
+    },
     "rules/thresholds.yaml": {
       "sha256": "4f49f6b528259c56911e1be03ce42a0684ecdf715441080982a9339fa76d4d68",
       "version": "0.0.0"

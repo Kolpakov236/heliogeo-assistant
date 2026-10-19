@@ -10,6 +10,7 @@ from pydantic import ConfigDict
 from heliogeo.contracts.envelope import ContractModel
 from heliogeo.contracts.features import FEATURES_PATH, FeaturesContract
 from heliogeo.contracts.loader import ContractError, body_sha256, read_mapping, validate_model
+from heliogeo.contracts.signals import SIGNALS_PATH, SignalsContract, check_signals
 
 
 class DraftContract(ContractModel):
@@ -38,6 +39,7 @@ KINDS: tuple[ContractKind, ...] = (
     ContractKind("thresholds", "rules/thresholds.yaml", DraftContract),
     ContractKind("homogenization", "homogenization/discontinuities.yaml", DraftContract),
     ContractKind("features", FEATURES_PATH, FeaturesContract),
+    ContractKind("signals", SIGNALS_PATH, SignalsContract),
 )
 
 
@@ -59,7 +61,17 @@ class LoadedContract:
 # загруженные контракты по имени вида и возвращают список проблем. Появятся вместе с реестром
 # фактов и словарём: функцию достаточно добавить в этот кортеж.
 CrossCheck = Callable[[Mapping[str, LoadedContract]], list[str]]
-CROSS_CHECKS: tuple[CrossCheck, ...] = ()
+
+
+def _signals_match_features(loaded: Mapping[str, LoadedContract]) -> list[str]:
+    """Правила сигналов ссылаются на существующие признаки с подходящими порогами."""
+    signals, features = loaded["signals"].model, loaded["features"].model
+    if not isinstance(signals, SignalsContract) or not isinstance(features, FeaturesContract):
+        return []
+    return check_signals(signals, features)
+
+
+CROSS_CHECKS: tuple[CrossCheck, ...] = (_signals_match_features,)
 
 
 def load_kind(root: Path, kind: ContractKind) -> LoadedContract:

@@ -147,6 +147,22 @@
   `valid_range`; сверка со `specs.yaml` — в валидаторе контрактов (`CROSS_CHECKS`). Пороги
   предварительные (шкалы NOAA), файл не подписан. Движок сигналов и промпт для LLM — следующий
   этап. Тесты `tests/unit/test_contracts_signals.py`; `versions.lock.json` обновлён.
+- Бэкфилл архива `heliogeo.functions.backfill` (часть `fn-admin`): по суткам периода скачивает в
+  сырой слой `/data` и RSGA на 23:59 (через `fn-ingest`) и докачивает два выпуска Forecast
+  Discussion (00:30 и 12:30), которые запрос на 23:59 не отдаёт; затем `normalize_days` строит L1.
+  Паузы между запросами (`ThrottledSink`), размыкатель после нескольких подряд ошибок «источник
+  недоступен», дыра архива (404) его не включает; уже скачанное в сеть не ходит. Тесты
+  `tests/unit/test_function_backfill.py`.
+- Корпус эталонных текстов `heliogeo.corpus`: индекс выпусков (`corpus/texts_v1.jsonl` в бакете
+  `lake`, строка на выпуск, детерминированный) и `Corpus` — выбор по виду, циклу и датам, разделы,
+  поиск по регулярному выражению, предложения, пропуски относительно расписания источника.
+  Запись выпуска знает описываемый период (24 часа до выпуска) и сутки данных для пары
+  «данные → текст» (`data_days`). Разделы RSGA читаются из сырого тела: текущий `SwxTextResponse`
+  их отбрасывает. Построитель ключа `key_corpus`. Тесты `tests/unit/test_corpus.py`.
+- CLI `heliogeo corpus`: `backfill --from --to`, `build`, `stats [--missing]`, `show`, `search`.
+  Период задаётся явно (системные часы код не читает). Документация `docs/corpus.md`; фикстуры
+  реальных текстов `fixtures/swx_text_rsga_2026-01-15.json`,
+  `fixtures/swx_text_discussion_2026-01-15_0030.json`. Тесты `tests/unit/test_cli_corpus.py`.
 
 ### Changed
 - `Settings` собирает `database_url` из `POSTGRES_*`, если `DATABASE_URL` не задан. В
@@ -192,6 +208,10 @@
   индексах), `swpc_g_scale` и `swpc_r_scale` (брать из числовой сетки Kp, а не из прозы).
 - `heliogeo run` при ошибке шага печатает класс ошибки; `PipelineResult.summary` показывает его у
   упавших шагов.
+- `map_technical_issues`: источник ветра `null` (так приходит у части суток) считается неизвестным
+  (`unknown`); раньше проверка по префиксу `omni_hro` падала с `AttributeError` на таких сутках и
+  ломала `fn-ingest`. Найдено пробным бэкфиллом за январь 2026; тест на `null` в
+  `test_swx_mapper.py`.
 
 ### Removed
 - Подстановка пустого payload, когда сборщик бросал `NotImplementedError` (`_empty_payload`): она

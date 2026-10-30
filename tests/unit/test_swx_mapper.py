@@ -442,6 +442,23 @@ def test_technical_issues_real_omni_source_values(source: str, caveat: str) -> N
     assert caveat in result
 
 
+def test_technical_issues_null_solar_wind_source_does_not_crash() -> None:
+    """У части суток solar_wind.source приходит как null: источник неизвестен, а не «None»."""
+    result = map_technical_issues(
+        [],
+        None,  # type: ignore[arg-type]
+        "2026-01-15",
+        has_l1_rtsw=False,
+        forecast_available=True,
+        discussion_available=True,
+        active_regions_growth="empty",
+    )
+
+    assert result is not None
+    assert "Solar wind source: unknown" in result
+    assert "None" not in result
+
+
 def test_technical_issues_l1_ace_no_omni_warning() -> None:
     """L1 ACE → нет предупреждения про OMNI bow shock."""
     result = map_technical_issues(

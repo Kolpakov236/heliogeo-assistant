@@ -330,6 +330,8 @@ def map_technical_issues(
     """
 
     issues: list[str] = list(notes or [])
+    # У части суток solar_wind.source приходит как null: источник неизвестен, а не «None»
+    solar_wind_source = solar_wind_source or "unknown"
 
     if snapshot_date >= PARTICLES_SGPS_START:
         issues.append("Proton >10 MeV: SGPS channels sum, not SWPC operational")

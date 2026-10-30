@@ -4,6 +4,7 @@ import logging
 
 import typer
 
+from heliogeo.cli.commands.corpus import corpus_app
 from heliogeo.cli.commands.run import run as run_cmd
 from heliogeo.cli.commands.validate import validate as validate_cmd
 from heliogeo.core.config import get_settings
@@ -30,6 +31,7 @@ def version() -> None:
 
 app.command(name="validate")(validate_cmd)
 app.command(name="run")(run_cmd)
+app.add_typer(corpus_app, name="corpus")
 
 
 if __name__ == "__main__":

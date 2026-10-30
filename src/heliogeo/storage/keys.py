@@ -163,6 +163,11 @@ def key_l2(kind: str, day: date, part: int = 0) -> str:
     return f"l2/{kind}/{_partition(day)}/{_part_file(part)}"
 
 
+def key_corpus(name: str) -> str:
+    """Производные тексты корпуса (индекс выпусков текста): ``corpus/{name}``."""
+    return f"corpus/{_segment(name, 'имя объекта корпуса')}"
+
+
 # --- Бакеты issues и artifacts ---
 
 

@@ -1,11 +1,9 @@
 """Правила сигналов: схема, сверка с признаками, норма и пустые значения на реальных данных.
 
-Движка сигналов в ``src`` нет (он следующий этап), поэтому небольшой вычислитель условий живёт
-здесь, в тесте: он показывает, что правила выбирают нужные сигналы на спокойном дне, на бури и
-при пустых данных.
+Сами правила применяет движок ``heliogeo.signals``; здесь проверяется, что контракт на спокойном
+дне, на бури и при пустых данных выбирает нужные сигналы.
 """
 
-from collections.abc import Mapping
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
@@ -22,13 +20,13 @@ from heliogeo.contracts.signals import (
     SignalKind,
     SignalRule,
     SignalsContract,
-    SummaryWhen,
     check_signals,
     load_signals,
 )
 from heliogeo.contracts.validate import validate_directory
 from heliogeo.features.compute import FeatureRow, compute_features
 from heliogeo.features.daily import extract_observation_daily
+from heliogeo.signals import holds, select_signals
 from tests.mocks.contracts import (
     ENVELOPE,
     make_contracts_tree,
@@ -42,71 +40,15 @@ SPECS = load_feature_specs()
 CONTRACT = load_signals()
 
 
-# --- Вычислитель условий (только для тестов) ---
-
-
-def _leaf_holds(leaf: Condition, values: Mapping[str, Any]) -> bool:
-    value = values.get(leaf.feature)
-    if value is None:
-        return False
-    operator, argument = leaf.operator()
-    return {
-        "gt": lambda: value > argument,
-        "gte": lambda: value >= argument,
-        "lt": lambda: value < argument,
-        "lte": lambda: value <= argument,
-        "eq": lambda: value == argument,
-        "ne": lambda: value != argument,
-        "in": lambda: value in argument,
-    }[operator]()
-
-
-def holds(condition: Condition, values: Mapping[str, Any]) -> bool:
-    if condition.feature is not None:
-        return _leaf_holds(condition, values)
-    if condition.all_ is not None:
-        return all(holds(child, values) for child in condition.all_)
-    if condition.any_ is not None:
-        return any(holds(child, values) for child in condition.any_)
-    assert condition.not_ is not None
-    return not holds(condition.not_, values)
+# --- Применение правил (движок — heliogeo.signals) ---
 
 
 def select(
     contract: SignalsContract, row: FeatureRow
 ) -> tuple[list[SignalRule], SignalRule | None]:
-    """Сработавшие сигналы и итоговый сигнал для строки признаков."""
-    values, quality = row.values, row.quality
-    fired: list[SignalRule] = []
-    for rule in contract.signals:
-        if rule.kind is not SignalKind.SIGNAL or not isinstance(rule.when, Condition):
-            continue
-        used = rule.when.features()
-        if any(values.get(f) is None or quality[f] not in rule.requires_quality for f in used):
-            continue
-        if holds(rule.when, values):
-            fired.append(rule)
-
-    by_id = {rule.id: rule for rule in contract.signals}
-    for name, profile in contract.features.items():
-        if profile.on_missing is None or values.get(name) is not None:
-            continue
-        rule = by_id[profile.on_missing.signal]
-        if rule not in fired:
-            fired.append(rule)
-
-    present = [values.get(name) is not None for name in contract.critical_features()]
-    for rule in contract.signals:
-        mode = rule.summary_mode()
-        if mode is None or not isinstance(rule.when, SummaryWhen):
-            continue
-        if any(f.severity.at_least(rule.when.no_signals_at_least) for f in fired):
-            continue
-        if mode == "all_present" and all(present):
-            return fired, rule
-        if mode == "some_missing" and any(present) and not all(present):
-            return fired, rule
-    return fired, None
+    """Сработавшие сигналы и итог в виде, удобном для проверок."""
+    selection = select_signals(contract, row)
+    return list(selection.fired), selection.summary
 
 
 def ids(rules: list[SignalRule]) -> set[str]:

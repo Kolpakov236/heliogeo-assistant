@@ -12,6 +12,7 @@ from heliogeo.storage.keys import (
     Bucket,
     bucket_name,
     key_artifact,
+    key_corpus,
     key_issue,
     key_l1,
     key_l2,
@@ -48,6 +49,13 @@ def test_every_l1_entity_and_l2_kind_has_a_key() -> None:
 def test_issue_key_allows_a_compound_run_id() -> None:
     run_id = "20261005T031422Z/daily/01J9ZQ8M0K3X5V7N2B4C6D8F0H"
     assert key_issue(DAY, run_id, "payload.json") == f"2026-10-05/{run_id}/payload.json"
+
+
+def test_corpus_key_and_its_validation() -> None:
+    assert key_corpus("texts_v1.jsonl") == "corpus/texts_v1.jsonl"
+    for bad in ("", "../texts.jsonl", "a/b.jsonl", "a b.jsonl"):
+        with pytest.raises(ValueError):
+            key_corpus(bad)
 
 
 def test_artifact_key() -> None:

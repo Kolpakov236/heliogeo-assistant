@@ -100,6 +100,10 @@ class ReportInput:
                 "generator_version": "1.0",
             },
             "day": self.day.isoformat(),
+            # готовые строки дат и окно: ``24 hr`` и ``02 Sep`` в тексте иначе не нашлись бы во входе
+            "window_hours": int(VALIDITY.total_seconds() // 3600),
+            "day_text": date_text(self.day),
+            "forecast_day_text": date_text(self.day + timedelta(days=1)),
             "sections": [
                 {
                     "name": s.name,
@@ -115,6 +119,14 @@ class ReportInput:
             "forbidden_claims": list(self.forbidden_claims),
             "technical_issues": self.technical_issues,
         }
+
+
+_MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+
+def date_text(day: date) -> str:
+    """Дата как в текстах NOAA (``02 Sep``); названия месяцев не зависят от локали."""
+    return f"{day.day:02d} {_MONTHS[day.month - 1]}"
 
 
 def time_text(moment: datetime) -> str:
@@ -244,10 +256,10 @@ def assemble_report_input(
         signals = tuple(
             _signal_json(r) for r in selection.fired if name in _rule_sections(r, contract, specs)
         )
-        notes = tuple(dict.fromkeys(
-            p.llm_note for k in _KEYS.get(name, ()) if k in observed[name]
+        notes = tuple(  # с именем признака: без него оговорка «если true…» ни к чему не привязана
+            f"{k}: {p.llm_note}" for k in _KEYS.get(name, ()) if k in observed[name]
             if (p := contract.features.get(k)) and p.llm_note
-        ))  # fmt: skip
+        )  # fmt: skip
         sections.append(
             SectionInput(name=name, observed=observed[name], signals=signals, notes=notes)
         )
